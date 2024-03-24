@@ -1,11 +1,10 @@
-: CRLF
-  ( -- )
-  13 emit 10 emit
-;
+\
+\ Utility words					      *
+\
 
 \ is character on stack CTRL Key for that letter
 : CTRL-KEY ( n c -- f )
-[ HEX 1F ] LITERAL AND
+[ HEX 1F DECIMAL ] LITERAL .s AND
 = IF TRUE ELSE FALSE THEN ;
 
 
@@ -23,18 +22,39 @@
     THEN
   THEN ;
 
+\
+\ terminal section                                     \
+\
+
+: EDITOR-READ-KEY
+( -- c )
+KEYRAW
+;
+
+: CRLF
+  ( -- )
+  13 emit 10 emit
+;
+
+\
+\ input section					      \
+\
+
+: EDITOR-PROCESS-KEYPRESS
+( --  )
+EDITOR-READ-KEY
+CASE
+ CHAR Q [ hex 1F decimal ] literal AND  OF ABORT" Quitting..." CRLF  ENDOF
+ENDCASE
+;
+
+
+\
+\ main code section                                    \
+\
 : fori ( -- n )
   BEGIN
-    KEYRAW
-    DUP CHAR Q CTRL-KEY IF EXIT THEN
-    DUP >STRING DUP CELL+ SWAP @  TYPE
-    DUP
-    ISCNTRL
-    IF
-      DROP CRLF
-    ELSE
-      DUP ." (" EMIT ." )" CRLF
-    THEN
+    EDITOR-PROCESS-KEYPRESS
     0
   UNTIL
 0 ;
