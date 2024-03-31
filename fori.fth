@@ -1,4 +1,15 @@
 \
+\ Variables
+\
+VARIABLE ROWS
+VARIABLE COLUMNS
+HEX 5413 DECIMAL CONSTANT TIOCGWINSZ
+DECIMAL 0 CONSTANT STDIN
+DECIMAL 1 CONSTANT STDOUT
+DECIMAL 2 CONSTANT STDERR
+
+
+\
 \ Utility words					      *
 \
 
@@ -26,6 +37,27 @@
 \ terminal section
 \
 
+: GET-WINDOW-SIZE
+[ DECIMAL 16 ] LITERAL ALLOCATE
+0=
+  IF
+    >R
+    STDOUT TIOCGWINSZ R@ IOCTL
+    0=
+      IF
+        DROP
+        R@ @ [ HEX FF ] LITERAL AND  ROWS !
+        R@ 2 + @ [ HEX FF ] LITERAL AND COLUMNS !
+        R> FREE
+      ELSE
+        ." ERRNO: " .
+        R> FREE
+        ABORT" IOCTL failed"
+      THEN
+  ELSE
+    ABORT" ALLOCATE failed"
+  THEN ;
+
 : EDITOR-READ-KEY
   ( -- c )
   KEYRAW
@@ -42,7 +74,7 @@
 
 : EDITOR-DRAW-ROWS
   ( -- )
-  24 0 DO 0 I AT-XY
+  ROWS @ 0 DO 0 I AT-XY
   CHAR ~ EMIT CRLF LOOP ;
 
 : EDITOR-RESET-SCREEN
@@ -76,6 +108,7 @@
 \ main code section                                    \
 \
 : fori ( -- n )
+  GET-WINDOW-SIZE
   EDITOR-REFRESH-SCREEN
   BEGIN
     EDITOR-PROCESS-KEYPRESS
