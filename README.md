@@ -1,4 +1,4 @@
-# fori
-Experimental code to build a vi-like text editor in Forth.
+# filo
+Filo is a port of the KILO editor to Forth.
 
 Riscyforth is used for Forth.
