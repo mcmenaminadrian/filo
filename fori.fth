@@ -33,30 +33,35 @@ DECIMAL 2 CONSTANT STDERR
     THEN
   THEN ;
 
+: BUFFERERR
+( n -- )
+0<>
+IF
+  ABORT" Memory allocation failure"
+THEN ;
+
 \
 \ terminal section
 \
 
 : GET-WINDOW-SIZE
 [ DECIMAL 16 ] LITERAL ALLOCATE
+BUFFERERR
+>R
+STDOUT TIOCGWINSZ R@ IOCTL
 0=
-  IF
-    >R
-    STDOUT TIOCGWINSZ R@ IOCTL
-    0=
-      IF
-        DROP
-        R@ @ [ HEX FF ] LITERAL AND  ROWS !
-        R@ 2 + @ [ HEX FF ] LITERAL AND COLUMNS !
-        R> FREE
-      ELSE
-        ." ERRNO: " .
-        R> FREE
-        ABORT" IOCTL failed"
-      THEN
-  ELSE
-    ABORT" ALLOCATE failed"
-  THEN ;
+IF
+  DROP
+  R@ @ [ HEX FFFF ] LITERAL AND  ROWS !
+  R@ 2 + @ [ HEX FFFF ] LITERAL AND COLUMNS !
+  R> FREE
+ELSE
+  ." ERRNO: " . CR
+  R> FREE
+  ABORT" IOCTL failed"
+THEN
+BUFFERERR
+;
 
 : EDITOR-READ-KEY
   ( -- c )
@@ -69,27 +74,95 @@ DECIMAL 2 CONSTANT STDERR
 ;
 
 \
+\ append buffer
+\
+
+VARIABLE BUFFER_PTR
+VARIABLE BUFFER_LEN
+
+: ABFREE
+( -- )
+BUFFER_PTR @ FREE
+BUFFERERR
+0 BUFFER_LEN !
+;
+
+: dupx
+DUP . ;
+
+: ABAPPEND
+( char* len -- )
+>R                         \ store length to be added on return stack
+BUFFER_LEN @               \ get existing length
+0<> IF                     \ if ... not 0
+  BUFFER_PTR @ R@ RESIZE   \ get a buffer of new size
+  BUFFERERR
+ELSE                       \ ... zero
+  R@ ALLOCATE              \ get a buffer of new size
+  BUFFERERR
+THEN
+BUFFER_PTR !               \ store address
+R@ BUFFER_LEN !            \ store length
+BUFFER_LEN @ R@ -          \ calculate offset for copying
+BUFFER_PTR @ +             \ add to get start point
+SWAP                       \ save that further back on the stack
+R> 0 DO                    \ start loop
+  DUP                      \ duplicate string base address
+  I + C@                   \ character in string
+  2 PICK                   \ get start from stack
+  I + C!                   \ copy character
+LOOP 
+2DROP
+;
+
+\
 \ output section
 \
 
 : EDITOR-DRAW-ROWS
-  ( -- )
-  ROWS @ 1+ 1 DO 1 I AT-XY
-  CHAR ~ EMIT
-  I ROWS @ < IF CRLF THEN
-  LOOP ;
+(  -- )
+2 ALLOCATE
+BUFFERERR
+>R
+ROWS @ 1+ 1 DO
+  CHAR ~ R@ C!
+  R@ 1 ABAPPEND
+  I ROWS @ <
+  IF
+    [ DECIMAL 13 ] LITERAL R@ C! [ DECIMAL 10 ] LITERAL R@ 1+ C!
+    R@ 2 ABAPPEND
+  THEN
+LOOP
+R@ FREE
+BUFFERERR
+RDROP
+;
 
 : EDITOR-RESET-SCREEN
   ( -- )
-  TERMIOSSTRING "2J"
-  TERMIOSSTRING "H"
+7 ALLOCATE
+BUFFERERR
+>R
+[ decimal 27 ] literal R@ C!
+CHAR [ R@ 1+ C!
+CHAR 2 R@ 2+ C!
+CHAR J R@ 3 + C!
+[ decimal 27 ] literal R@ 4 + C!
+CHAR [ R@ 5 + C!
+CHAR H R@ 6 + C!
+R@ 7 ABAPPEND
+R> FREE
+BUFFERERR
 ;
 
 : EDITOR-REFRESH-SCREEN
 ( -- )
-  EDITOR-RESET-SCREEN
-  EDITOR-DRAW-ROWS
-  0 0  AT-XY
+EDITOR-RESET-SCREEN
+EDITOR-DRAW-ROWS
+BUFFER_PTR @ BUFFER_LEN @ TYPE
+ABFREE
+  
+0 0  AT-XY
 ;
 
 \
@@ -118,3 +191,5 @@ DECIMAL 2 CONSTANT STDERR
   UNTIL
   0
 ;
+
+FORI
