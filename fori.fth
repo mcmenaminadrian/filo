@@ -97,14 +97,17 @@ DUP . ;
 >R                         \ store length to be added on return stack
 BUFFER_LEN @               \ get existing length
 0<> IF                     \ if ... not 0
-  BUFFER_PTR @ R@ RESIZE   \ get a buffer of new size
+  BUFFER_PTR @ 
+  BUFFER_LEN @ R@ +  RESIZE \ get a buffer of new size
   BUFFERERR
+  R@ BUFFER_LEN @ +
+  BUFFER_LEN !
 ELSE                       \ ... zero
-  R@ ALLOCATE              \ get a buffer of new size
+  R@ NOP ALLOCATE              \ get a buffer of new size
   BUFFERERR
+  R@ BUFFER_LEN !
 THEN
 BUFFER_PTR !               \ store address
-R@ BUFFER_LEN !            \ store length
 BUFFER_LEN @ R@ -          \ calculate offset for copying
 BUFFER_PTR @ +             \ add to get start point
 SWAP                       \ save that further back on the stack
