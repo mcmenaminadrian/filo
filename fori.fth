@@ -13,9 +13,13 @@ DECIMAL 2 CONSTANT STDERR
 \ Utility words					      *
 \
 
+\ check for error
+: DROPERR
+0<> IF ABORT" Halting on error" THEN ;
+
 \ is character on stack CTRL Key for that letter
 : CTRL-KEY ( n c -- f )
-  [ HEX 1F DECIMAL ] LITERAL .s AND
+  [ HEX 1F DECIMAL ] LITERAL AND
   = IF TRUE ELSE FALSE THEN ;
 
 
@@ -33,12 +37,6 @@ DECIMAL 2 CONSTANT STDERR
     THEN
   THEN ;
 
-: BUFFERERR
-( n -- )
-0<>
-IF
-  ABORT" Memory allocation failure"
-THEN ;
 
 \
 \ terminal section
@@ -46,8 +44,7 @@ THEN ;
 
 : GET-WINDOW-SIZE
 ( -- )
-[ DECIMAL 16 ] LITERAL ALLOCATE
-BUFFERERR
+[ DECIMAL 16 ] LITERAL ALLOCATE DROPERR
 >R
 STDOUT TIOCGWINSZ R@ IOCTL
 0=
@@ -56,18 +53,16 @@ IF
   R@ C@ R@ 1+ C@ [ HEX FF ] LITERAL * + ROWS !
   R@ 2+ C@ R@ 3 + C@ [ HEX FF ] LITERAL * + COLUMNS !
   R> FREE
-  BUFFERERR
 ELSE
   ." ERRNO: " . CR
   R> FREE
-  BUFFERERR
   ABORT" IOCTL failed"
 THEN
 ;
 
 : EDITOR-READ-KEY
   ( -- c )
-  KEYRAW
+  KEYRAW NOP
 ;
 
 : CRLF
@@ -84,8 +79,7 @@ VARIABLE BUFFER_LEN
 
 : ABFREE
 ( -- )
-BUFFER_PTR @ FREE
-BUFFERERR
+BUFFER_PTR @ FREE DROPERR
 0 BUFFER_LEN !
 ;
 
@@ -94,17 +88,16 @@ DUP . ;
 
 : ABAPPEND
 ( char* len -- )
->R                         \ store length to be added on return stack
+>R                         \ store length to be added on returstack
 BUFFER_LEN @               \ get existing length
 0<> IF                     \ if ... not 0
   BUFFER_PTR @ 
-  BUFFER_LEN @ R@ +  RESIZE \ get a buffer of new size
-  BUFFERERR
+  BUFFER_LEN @ R@ + RESIZE \ get a buffer of new size
+  DROPERR
   R@ BUFFER_LEN @ +
   BUFFER_LEN !
 ELSE                       \ ... zero
-  R@ NOP ALLOCATE              \ get a buffer of new size
-  BUFFERERR
+  R@ ALLOCATE DROPERR      \ get a buffer of new size
   R@ BUFFER_LEN !
 THEN
 BUFFER_PTR !               \ store address
@@ -127,28 +120,23 @@ LOOP
 : EDITOR-DRAW-ROWS
 (  -- )
 ROWS @ 1+ 1 DO
-  1 ALLOCATE
-  BUFFERERR
+  1 ALLOCATE DROPERR
   DUP
   CHAR ~ SWAP C!
   DUP 1 ABAPPEND
-  FREE BUFFERERR
   I ROWS @ <
   IF
-    2 ALLOCATE
-    BUFFERERR
+    2 ALLOCATE DROPERR 
     DUP DUP
     [ DECIMAL 13 ] LITERAL SWAP C! [ DECIMAL 10 ] LITERAL SWAP 1+ C!
-    DUP 2 ABAPPEND
-    FREE BUFFERERR
+    DUP 2 ABAPPEND 
   THEN
 LOOP
 ;
 
 : EDITOR-RESET-SCREEN
   ( -- )
-7 ALLOCATE 
-BUFFERERR
+7 ALLOCATE DROPERR
 >R
 [ decimal 27 ] literal R@ C!
 CHAR [ R@ 1+ C!
@@ -157,14 +145,13 @@ CHAR J R@ 3 + C!
 [ decimal 27 ] literal R@ 4 + C!
 CHAR [ R@ 5 + C!
 CHAR H R@ 6 + C!
-R@ 7 ABAPPEND
-R> FREE
-BUFFERERR
+R@ 7 TYPE
+R> FREE DROPERR
 ;
 
 : EDITOR-REFRESH-SCREEN
 ( -- )
-EDITOR-RESET-SCREEN
+EDITOR-RESET-SCREEN 
 EDITOR-DRAW-ROWS
 BUFFER_PTR @ BUFFER_LEN @ TYPE
 ABFREE
@@ -180,8 +167,10 @@ ABFREE
   ( --  )
   EDITOR-READ-KEY
   CASE
-   CHAR Q [ HEX 1F ] LITERAL AND  OF
-     EDITOR-RESET-SCREEN ABORT" Leaving FILO " CRLF  ENDOF
+    CHAR Q [ HEX 1F ] LITERAL AND  OF
+      EDITOR-RESET-SCREEN 
+      ABORT" Leaving FILO " CRLF  
+    ENDOF
   ENDCASE
 ;
 
