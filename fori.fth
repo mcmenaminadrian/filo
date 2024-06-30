@@ -52,17 +52,17 @@ IF
   DROP
   R@ C@ R@ 1+ C@ [ HEX FF ] LITERAL * + ROWS !
   R@ 2+ C@ R@ 3 + C@ [ HEX FF ] LITERAL * + COLUMNS !
-  R> FREE
+  R> FREE DROPERR
 ELSE
   ." ERRNO: " . CR
-  R> FREE
+  R> FREE DROPERR
   ABORT" IOCTL failed"
 THEN
 ;
 
 : EDITOR-READ-KEY
   ( -- c )
-  KEYRAW NOP
+  KEYRAW
 ;
 
 : CRLF
@@ -88,16 +88,12 @@ DUP . ;
 
 : ABAPPEND
 ( char* len -- )
->R                         \ store length to be added on returstack
+>R                         \ store length to be added on return stack
 BUFFER_LEN @               \ get existing length
 0<> IF                     \ if ... not 0
   BUFFER_PTR @ 
   BUFFER_LEN @ R@ + RESIZE \ get a buffer of new size
-  DROPERR
-  R@ BUFFER_LEN @ +
-  BUFFER_LEN !
-ELSE                       \ ... zero
-  R@ ALLOCATE DROPERR      \ get a buffer of new size
+  DROPERR                  \ get a buffer of new size
   R@ BUFFER_LEN !
 THEN
 BUFFER_PTR !               \ store address
@@ -134,14 +130,16 @@ ROWS @ 1+ 1 DO
 LOOP
 ;
 
-: EDITOR-RESET-SCREEN
-  ( -- )
+: CLEARSCREEN
+( -- )
 7 ALLOCATE DROPERR
 >R
+\ ESC [2J - clear entire screen
 [ decimal 27 ] literal R@ C!
 CHAR [ R@ 1+ C!
 CHAR 2 R@ 2+ C!
 CHAR J R@ 3 + C!
+\ ESC [H - Cursor to top of screen (1 ,1)
 [ decimal 27 ] literal R@ 4 + C!
 CHAR [ R@ 5 + C!
 CHAR H R@ 6 + C!
@@ -149,12 +147,61 @@ R@ 7 TYPE
 R> FREE DROPERR
 ;
 
+: EDITOR-DRAW-ROWS
+( -- )
+ROWS @ 1+ 1 DO
+  BUFFER_PTR @ BUFFER_LEN @ 3 + RESIZE DROPERR
+  BUFFER_PTR !
+  BUFFER_LEN @ 3 + BUFFER_LEN !
+  CHAR ~ BUFFER_PTR @ BUFFER_LEN @ + 3 - C!
+  I ROWS @ <
+  IF [ DECIMAL 13 ] literal BUFFER_PTR @ BUFFER_LEN @ + 2- C! [ DECIMAL 10 ] literal BUFFER_PTR @ BUFFER_LEN @ + 1- C!
+  ELSE BUFFER_LEN @ 2- BUFFER_LEN !
+  THEN
+LOOP
+;
+  
+  
+
+: EDITOR-RESET-SCREEN
+  ( -- )
+[ decimal 64 ] literal  ALLOCATE DROPERR BUFFER_PTR !
+\ ESC [?25l - make cursor disappear
+[ decimal 27 ] literal BUFFER_PTR @ C!
+CHAR [ BUFFER_PTR @ 1+ C!
+CHAR ? BUFFER_PTR @ 2+ C!
+CHAR 2 BUFFER_PTR @ 3 + C!
+CHAR 5 BUFFER_PTR @ 4 + C!
+CHAR l BUFFER_PTR @ 5 + C!
+\ ESC [2J - clear entire screen
+[ decimal 27 ] literal BUFFER_PTR @ 6 + C!
+CHAR [ BUFFER_PTR @ 7 + C!
+CHAR 2 BUFFER_PTR @ 8 + C!
+CHAR J BUFFER_PTR @ 9 + C!
+\ ESC [H - Cursor to top of screen (1 ,1)
+[ decimal 27 ] literal BUFFER_PTR @ 10 + C!
+CHAR [ BUFFER_PTR @ 11 + C!
+CHAR H BUFFER_PTR @ 12 + C!
+[ decimal 13 ] literal BUFFER_LEN !
+EDITOR-DRAW-ROWS
+BUFFER_PTR @ BUFFER_LEN @ 9 + RESIZE DROPERR
+BUFFER_PTR !
+\ ESC [?25h - cursor reappear
+[ decimal 27 ] literal BUFFER_PTR @ BUFFER_LEN @ + C!
+CHAR [ BUFFER_PTR @ BUFFER_LEN @ 1+ + C!
+CHAR ? BUFFER_PTR @  BUFFER_LEN @ 2+ + C!
+CHAR 2 BUFFER_PTR @  BUFFER_LEN @ 3 + + C!
+CHAR 5 BUFFER_PTR @  BUFFER_LEN @ 4 + + C!
+CHAR h BUFFER_PTR @  BUFFER_LEN @ 5 + + C!
+BUFFER_PTR @ BUFFER_LEN @ [ decimal 6 ]  literal  + TYPE
+BUFFER_PTR @ FREE DROPERR
+0 BUFFER_LEN !
+;
+
+
 : EDITOR-REFRESH-SCREEN
 ( -- )
-EDITOR-RESET-SCREEN 
-EDITOR-DRAW-ROWS
-BUFFER_PTR @ BUFFER_LEN @ TYPE
-ABFREE
+EDITOR-RESET-SCREEN
   
 0 0  AT-XY
 ;
