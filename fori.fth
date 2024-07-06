@@ -8,6 +8,9 @@ DECIMAL 0 CONSTANT STDIN
 DECIMAL 1 CONSTANT STDOUT
 DECIMAL 2 CONSTANT STDERR
 
+: welcomemsg
+C" Filo editor -- (c) Adrian McMenamin, 2024"
+;
 
 \
 \ Utility words					      *
@@ -113,23 +116,6 @@ LOOP
 \ output section
 \
 
-: EDITOR-DRAW-ROWS
-(  -- )
-ROWS @ 1+ 1 DO
-  1 ALLOCATE DROPERR
-  DUP
-  CHAR ~ SWAP C!
-  DUP 1 ABAPPEND
-  I ROWS @ <
-  IF
-    2 ALLOCATE DROPERR 
-    DUP DUP
-    [ DECIMAL 13 ] LITERAL SWAP C! [ DECIMAL 10 ] LITERAL SWAP 1+ C!
-    DUP 2 ABAPPEND 
-  THEN
-LOOP
-;
-
 : CLEARSCREEN
 ( -- )
 7 ALLOCATE DROPERR
@@ -150,10 +136,25 @@ R> FREE DROPERR
 : EDITOR-DRAW-ROWS
 ( -- )
 ROWS @ 1+ 1 DO
-  BUFFER_PTR @ BUFFER_LEN @ 3 + RESIZE DROPERR
-  BUFFER_PTR !
-  BUFFER_LEN @ 3 + BUFFER_LEN !
-  CHAR ~ BUFFER_PTR @ BUFFER_LEN @ + 3 - C!
+  ROWS @ 3 / I =
+  IF
+    BUFFER_PTR @ BUFFER_LEN @ welcomemsg @ + RESIZE DROPERR
+    BUFFER_PTR !
+    welcomemsg 8 + BUFFER_PTR @ BUFFER_LEN @ + welcomemsg @ MOVE
+    BUFFER_LEN @ welcomemsg @ + BUFFER_LEN !
+    BUFFER_PTR @ BUFFER_LEN @ 5 + RESIZE DROPERR
+    BUFFER_PTR !
+    BUFFER_LEN @ 5 + BUFFER_LEN !
+  ELSE
+    BUFFER_PTR @ BUFFER_LEN @ 6 + RESIZE DROPERR
+    BUFFER_PTR !
+    BUFFER_LEN @ 6 + BUFFER_LEN !
+    CHAR ~ BUFFER_PTR @ BUFFER_LEN @ + 6 - C!
+  THEN
+  \ ESC[K - redraw line
+  [ decimal 27 ] literal BUFFER_PTR @ BUFFER_LEN @ 5 - + C!
+  CHAR [ BUFFER_PTR @ BUFFER_LEN @ 4 - + C!
+  CHAR K BUFFER_PTR @ BUFFER_LEN @ 3 - + C!
   I ROWS @ <
   IF [ DECIMAL 13 ] literal BUFFER_PTR @ BUFFER_LEN @ + 2- C! [ DECIMAL 10 ] literal BUFFER_PTR @ BUFFER_LEN @ + 1- C!
   ELSE BUFFER_LEN @ 2- BUFFER_LEN !
@@ -173,16 +174,11 @@ CHAR ? BUFFER_PTR @ 2+ C!
 CHAR 2 BUFFER_PTR @ 3 + C!
 CHAR 5 BUFFER_PTR @ 4 + C!
 CHAR l BUFFER_PTR @ 5 + C!
-\ ESC [2J - clear entire screen
+\ ESC [H - Cursor to top of screen (1 ,1)
 [ decimal 27 ] literal BUFFER_PTR @ 6 + C!
 CHAR [ BUFFER_PTR @ 7 + C!
-CHAR 2 BUFFER_PTR @ 8 + C!
-CHAR J BUFFER_PTR @ 9 + C!
-\ ESC [H - Cursor to top of screen (1 ,1)
-[ decimal 27 ] literal BUFFER_PTR @ 10 + C!
-CHAR [ BUFFER_PTR @ 11 + C!
-CHAR H BUFFER_PTR @ 12 + C!
-[ decimal 13 ] literal BUFFER_LEN !
+CHAR H BUFFER_PTR @ 8 + C!
+[ decimal 9 ] literal BUFFER_LEN !
 EDITOR-DRAW-ROWS
 BUFFER_PTR @ BUFFER_LEN @ 9 + RESIZE DROPERR
 BUFFER_PTR !
@@ -215,7 +211,8 @@ EDITOR-RESET-SCREEN
   EDITOR-READ-KEY
   CASE
     CHAR Q [ HEX 1F ] LITERAL AND  OF
-      EDITOR-RESET-SCREEN 
+      EDITOR-RESET-SCREEN
+      CLEARSCREEN
       ABORT" Leaving FILO " CRLF  
     ENDOF
   ENDCASE
