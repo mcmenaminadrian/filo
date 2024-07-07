@@ -3,6 +3,8 @@
 \
 VARIABLE ROWS
 VARIABLE COLUMNS
+VARIABLE CX
+VARIABLE CY
 HEX 5413 CONSTANT TIOCGWINSZ
 DECIMAL 0 CONSTANT STDIN
 DECIMAL 1 CONSTANT STDOUT
@@ -97,7 +99,8 @@ BUFFER_LEN @               \ get existing length
   BUFFER_PTR @ 
   BUFFER_LEN @ R@ + RESIZE \ get a buffer of new size
   DROPERR                  \ get a buffer of new size
-  R@ BUFFER_LEN !
+  R@ BUFFER_LEN @ + 
+  BUFFER_LEN !
 THEN
 BUFFER_PTR !               \ store address
 BUFFER_LEN @ R@ -          \ calculate offset for copying
@@ -133,22 +136,33 @@ R@ 7 TYPE
 R> FREE DROPERR
 ;
 
+: EXTEND_BUFFER_NO_ADD_LEN
+( n --  )
+BUFFER_LEN @ +                                       \ get new length we seek
+BUFFER_PTR @ SWAP RESIZE DROPERR                     \ get resized buffer
+BUFFER_PTR !                                         \ store new buffer address
+;
+
+: EXTEND_BUFFER
+( n -- )
+DUP >R                                               \ duplicate and store extension length
+BUFFER_LEN @ +                                       \ get new length we seek
+BUFFER_PTR @ SWAP RESIZE DROPERR                     \ get resized buffer
+BUFFER_PTR !                                         \ store new buffer address
+R> BUFFER_LEN @ + BUFFER_LEN !                       \ store new buffer length
+;
+
 : EDITOR-DRAW-ROWS
 ( -- )
 ROWS @ 1+ 1 DO
   ROWS @ 3 / I =
-  IF
-    BUFFER_PTR @ BUFFER_LEN @ welcomemsg @ + RESIZE DROPERR
-    BUFFER_PTR !
+  IF  \ welcome message
+    welcomemsg @ EXTEND_BUFFER_NO_ADD_LEN
     welcomemsg 8 + BUFFER_PTR @ BUFFER_LEN @ + welcomemsg @ MOVE
     BUFFER_LEN @ welcomemsg @ + BUFFER_LEN !
-    BUFFER_PTR @ BUFFER_LEN @ 5 + RESIZE DROPERR
-    BUFFER_PTR !
-    BUFFER_LEN @ 5 + BUFFER_LEN !
-  ELSE
-    BUFFER_PTR @ BUFFER_LEN @ 6 + RESIZE DROPERR
-    BUFFER_PTR !
-    BUFFER_LEN @ 6 + BUFFER_LEN !
+    5 EXTEND_BUFFER
+  ELSE \ tilde
+    6 EXTEND_BUFFER
     CHAR ~ BUFFER_PTR @ BUFFER_LEN @ + 6 - C!
   THEN
   \ ESC[K - redraw line
@@ -162,7 +176,16 @@ ROWS @ 1+ 1 DO
 LOOP
 ;
   
-  
+: PRINT_BUFFER
+( -- )
+BUFFER_PTR @ BUFFER_LEN @ TYPE
+;
+
+
+: MOVE_CURSOR
+( -- )
+3 EXTEND_BUFFER
+;
 
 : EDITOR-RESET-SCREEN
   ( -- )
@@ -180,8 +203,7 @@ CHAR [ BUFFER_PTR @ 7 + C!
 CHAR H BUFFER_PTR @ 8 + C!
 [ decimal 9 ] literal BUFFER_LEN !
 EDITOR-DRAW-ROWS
-BUFFER_PTR @ BUFFER_LEN @ 9 + RESIZE DROPERR
-BUFFER_PTR !
+9 EXTEND_BUFFER_NO_ADD_LEN
 \ ESC [?25h - cursor reappear
 [ decimal 27 ] literal BUFFER_PTR @ BUFFER_LEN @ + C!
 CHAR [ BUFFER_PTR @ BUFFER_LEN @ 1+ + C!
@@ -189,7 +211,9 @@ CHAR ? BUFFER_PTR @  BUFFER_LEN @ 2+ + C!
 CHAR 2 BUFFER_PTR @  BUFFER_LEN @ 3 + + C!
 CHAR 5 BUFFER_PTR @  BUFFER_LEN @ 4 + + C!
 CHAR h BUFFER_PTR @  BUFFER_LEN @ 5 + + C!
-BUFFER_PTR @ BUFFER_LEN @ [ decimal 6 ]  literal  + TYPE
+BUFFER_LEN @ [ decimal 6 ]  literal  + BUFFER_LEN !
+\ MOVE_CURSOR
+PRINT_BUFFER
 BUFFER_PTR @ FREE DROPERR
 0 BUFFER_LEN !
 ;
@@ -223,6 +247,8 @@ EDITOR-RESET-SCREEN
 \ main code section                                    \
 \
 : fori ( -- n )
+  0 CX !
+  0 CY !
   GET-WINDOW-SIZE
   EDITOR-REFRESH-SCREEN
   BEGIN
