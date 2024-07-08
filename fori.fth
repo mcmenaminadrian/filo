@@ -170,8 +170,10 @@ ROWS @ 1+ 1 DO
   CHAR [ BUFFER_PTR @ BUFFER_LEN @ 4 - + C!
   CHAR K BUFFER_PTR @ BUFFER_LEN @ 3 - + C!
   I ROWS @ <
-  IF [ DECIMAL 13 ] literal BUFFER_PTR @ BUFFER_LEN @ + 2- C! [ DECIMAL 10 ] literal BUFFER_PTR @ BUFFER_LEN @ + 1- C!
-  ELSE BUFFER_LEN @ 2- BUFFER_LEN !
+  IF
+    [ DECIMAL 13 ] literal BUFFER_PTR @ BUFFER_LEN @ + 2- C! [ DECIMAL 10 ] literal BUFFER_PTR @ BUFFER_LEN @ + 1- C!
+  ELSE
+    BUFFER_LEN @ 2- BUFFER_LEN !
   THEN
 LOOP
 ;
@@ -184,7 +186,11 @@ BUFFER_PTR @ BUFFER_LEN @ TYPE
 
 : MOVE_CURSOR
 ( -- )
-3 EXTEND_BUFFER
+S\" \e[" ABAPPEND                                     \ first part of escape sequence
+CY @ 1+ >STRING DUP @ SWAP 8 + SWAP ABAPPEND               \ add y
+S" ;" ABAPPEND
+CX @ 1+ >STRING DUP @ SWAP 8 + SWAP ABAPPEND               \ add x
+S" H" ABAPPEND
 ;
 
 : EDITOR-RESET-SCREEN
@@ -197,22 +203,17 @@ CHAR ? BUFFER_PTR @ 2+ C!
 CHAR 2 BUFFER_PTR @ 3 + C!
 CHAR 5 BUFFER_PTR @ 4 + C!
 CHAR l BUFFER_PTR @ 5 + C!
-\ ESC [H - Cursor to top of screen (1 ,1)
-[ decimal 27 ] literal BUFFER_PTR @ 6 + C!
-CHAR [ BUFFER_PTR @ 7 + C!
-CHAR H BUFFER_PTR @ 8 + C!
-[ decimal 9 ] literal BUFFER_LEN !
+[ decimal 6 ] literal BUFFER_LEN !
 EDITOR-DRAW-ROWS
-9 EXTEND_BUFFER_NO_ADD_LEN
+MOVE_CURSOR
+6 EXTEND_BUFFER
 \ ESC [?25h - cursor reappear
-[ decimal 27 ] literal BUFFER_PTR @ BUFFER_LEN @ + C!
-CHAR [ BUFFER_PTR @ BUFFER_LEN @ 1+ + C!
-CHAR ? BUFFER_PTR @  BUFFER_LEN @ 2+ + C!
-CHAR 2 BUFFER_PTR @  BUFFER_LEN @ 3 + + C!
-CHAR 5 BUFFER_PTR @  BUFFER_LEN @ 4 + + C!
-CHAR h BUFFER_PTR @  BUFFER_LEN @ 5 + + C!
-BUFFER_LEN @ [ decimal 6 ]  literal  + BUFFER_LEN !
-\ MOVE_CURSOR
+[ decimal 27 ] literal BUFFER_PTR @ BUFFER_LEN @ 6 - + C!
+CHAR [ BUFFER_PTR @ BUFFER_LEN @ 5 - + C!
+CHAR ? BUFFER_PTR @  BUFFER_LEN @ 4 -  + C!
+CHAR 2 BUFFER_PTR @  BUFFER_LEN @ 3 - + C!
+CHAR 5 BUFFER_PTR @  BUFFER_LEN @ 2-  + C!
+CHAR h BUFFER_PTR @  BUFFER_LEN @ 1- + C!
 PRINT_BUFFER
 BUFFER_PTR @ FREE DROPERR
 0 BUFFER_LEN !
@@ -223,7 +224,6 @@ BUFFER_PTR @ FREE DROPERR
 ( -- )
 EDITOR-RESET-SCREEN
   
-0 0  AT-XY
 ;
 
 \
@@ -239,7 +239,20 @@ EDITOR-RESET-SCREEN
       CLEARSCREEN
       ABORT" Leaving FILO " CRLF  
     ENDOF
+    CHAR a OF
+      CX @ 1- CX !
+    ENDOF
+    CHAR d OF
+      CX @ 1+ CX !
+    ENDOF
+    CHAR w OF
+      CY @ 1- CY !
+    ENDOF
+    CHAR s OF
+      CY @ 1+ CY !
+    ENDOF
   ENDCASE
+
 ;
 
 
@@ -250,8 +263,8 @@ EDITOR-RESET-SCREEN
   0 CX !
   0 CY !
   GET-WINDOW-SIZE
-  EDITOR-REFRESH-SCREEN
   BEGIN
+    EDITOR-REFRESH-SCREEN
     EDITOR-PROCESS-KEYPRESS
     0
   UNTIL
