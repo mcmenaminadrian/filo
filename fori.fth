@@ -66,7 +66,7 @@ THEN
 ;
 
 : EDITOR-READ-KEY
-  ( -- c )
+  ( -- c *scratchpad)
   KEYRAW
 ;
 
@@ -230,27 +230,72 @@ EDITOR-RESET-SCREEN
 \ input section	
 \
 
+: PROCESS-ESCAPED-KEY
+  ( *addr -- )
+  >R                                         \ save address to return stack
+  R@ 1+ C@                                   \ get next character
+  CHAR [ =                                   \ is it [?
+  IF
+    R@ 2+ C@                                 \ yes - so process
+    CASE
+      CHAR A OF                              \ up arrow
+        CY @ DUP
+        0<> 
+        IF
+          1- CY !                            \ decrease if not at top of screen
+        ELSE
+          DROP
+        THEN
+      ENDOF
+      CHAR B OF                              \ arrow down
+        CY @ DUP
+        ROWS @ 1- <>
+        IF
+          1+ CY !                           \ increase if not at bottom of screen
+        ELSE
+          DROP
+        THEN
+      ENDOF
+      CHAR C OF                             \ arrow right
+        CX @ DUP
+        COLUMNS @ 1- <>                     \ not at right hand edge
+        IF
+          1+ CX !
+        ELSE
+          DROP
+        THEN
+      ENDOF
+      CHAR D OF                            \ arrow left
+        CX @ DUP
+        0<>
+        IF
+          1- CX !                          \ move left if not already at edge
+        ELSE
+          DROP
+        THEN
+      ENDOF
+      DUP OF ENDOF                     \ default
+    ENDCASE
+  THEN
+  RDROP
+;
+      
 : EDITOR-PROCESS-KEYPRESS
   ( --  )
   EDITOR-READ-KEY
   CASE
     CHAR Q [ HEX 1F ] LITERAL AND  OF
+      DROP
       EDITOR-RESET-SCREEN
       CLEARSCREEN
       ABORT" Leaving FILO " CRLF  
     ENDOF
-    CHAR a OF
-      CX @ 1- CX !
+    CASE
+      [ decimal 27 ] literal  OF
+        SWAP
+        PROCESS-ESCAPED-KEY
     ENDOF
-    CHAR d OF
-      CX @ 1+ CX !
-    ENDOF
-    CHAR w OF
-      CY @ 1- CY !
-    ENDOF
-    CHAR s OF
-      CY @ 1+ CY !
-    ENDOF
+    DUP OF DROP ENDOF    \ default drop pointer to scratchpad
   ENDCASE
 
 ;
