@@ -101,18 +101,13 @@ BUFFER_LEN @               \ get existing length
   DROPERR                  \ get a buffer of new size
   R@ BUFFER_LEN @ + 
   BUFFER_LEN !
+ELSE
+  1 DROPERR
 THEN
 BUFFER_PTR !               \ store address
 BUFFER_LEN @ R@ -          \ calculate offset for copying
 BUFFER_PTR @ +             \ add to get start point
-SWAP                       \ save that further back on the stack
-R> 0 DO                    \ start loop
-  DUP                      \ duplicate string base address
-  I + C@                   \ character in string
-  2 PICK                   \ get start from stack
-  I + C!                   \ copy character
-LOOP 
-2DROP
+R> MOVE                    \ copy
 ;
 
 \
@@ -186,7 +181,7 @@ BUFFER_PTR @ BUFFER_LEN @ TYPE
 
 : MOVE_CURSOR
 ( -- )
-S\" \e[" ABAPPEND                                     \ first part of escape sequence
+S\" \e[" ABAPPEND                                          \ first part of escape sequence
 CY @ 1+ >STRING DUP @ SWAP 8 + SWAP ABAPPEND               \ add y
 S" ;" ABAPPEND
 CX @ 1+ >STRING DUP @ SWAP 8 + SWAP ABAPPEND               \ add x
@@ -204,6 +199,7 @@ CHAR 2 BUFFER_PTR @ 3 + C!
 CHAR 5 BUFFER_PTR @ 4 + C!
 CHAR l BUFFER_PTR @ 5 + C!
 [ decimal 6 ] literal BUFFER_LEN !
+S\" \e[1;1H" ABAPPEND
 EDITOR-DRAW-ROWS
 MOVE_CURSOR
 6 EXTEND_BUFFER
@@ -215,8 +211,7 @@ CHAR 2 BUFFER_PTR @  BUFFER_LEN @ 3 - + C!
 CHAR 5 BUFFER_PTR @  BUFFER_LEN @ 2-  + C!
 CHAR h BUFFER_PTR @  BUFFER_LEN @ 1- + C!
 PRINT_BUFFER
-BUFFER_PTR @ FREE DROPERR
-0 BUFFER_LEN !
+ABFREE
 ;
 
 
@@ -295,7 +290,7 @@ EDITOR-RESET-SCREEN
         SWAP
         PROCESS-ESCAPED-KEY
     ENDOF
-    DUP OF DROP ENDOF    \ default drop pointer to scratchpad
+    DUP OF ENDOF                    \ default
   ENDCASE
 
 ;
