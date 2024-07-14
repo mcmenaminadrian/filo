@@ -10,6 +10,12 @@ DECIMAL 0 CONSTANT STDIN
 DECIMAL 1 CONSTANT STDOUT
 DECIMAL 2 CONSTANT STDERR
 
+VARIABLE TEXTROW
+VARIABLE TEXTROWLEN
+VARIABLE NUMROWS
+
+VARIABLE TEMP
+
 : welcomemsg
 C" Filo editor -- (c) Adrian McMenamin, 2024"
 ;
@@ -150,25 +156,30 @@ R> BUFFER_LEN @ + BUFFER_LEN !                       \ store new buffer length
 : EDITOR-DRAW-ROWS
 ( -- )
 ROWS @ 1+ 1 DO
-  ROWS @ 3 / I =
-  IF  \ welcome message
-    welcomemsg @ EXTEND_BUFFER_NO_ADD_LEN
-    welcomemsg 8 + BUFFER_PTR @ BUFFER_LEN @ + welcomemsg @ MOVE
-    BUFFER_LEN @ welcomemsg @ + BUFFER_LEN !
-    5 EXTEND_BUFFER
-  ELSE \ tilde
-    6 EXTEND_BUFFER
-    CHAR ~ BUFFER_PTR @ BUFFER_LEN @ + 6 - C!
+  I NUMROWS @ >
+  IF
+    ROWS @ 3 / I =
+    IF  \ welcome message
+      welcomemsg @ EXTEND_BUFFER_NO_ADD_LEN
+      welcomemsg 8 + BUFFER_PTR @ BUFFER_LEN @ + welcomemsg @ MOVE
+      BUFFER_LEN @ welcomemsg @ + BUFFER_LEN !
+    ELSE \ tilde
+      1 EXTEND_BUFFER
+      CHAR ~ BUFFER_PTR @ BUFFER_LEN @ + 1- C!
+    THEN
+  ELSE
+    TEXTROWLEN @ TEMP !
+    TEMP @ COLUMNS @ >
+    IF
+      COLUMNS @ TEMP !
+    THEN
+    TEXTROW @ TEMP @ ABAPPEND
   THEN
   \ ESC[K - redraw line
-  [ decimal 27 ] literal BUFFER_PTR @ BUFFER_LEN @ 5 - + C!
-  CHAR [ BUFFER_PTR @ BUFFER_LEN @ 4 - + C!
-  CHAR K BUFFER_PTR @ BUFFER_LEN @ 3 - + C!
+  S\" \e[K" ABAPPEND
   I ROWS @ <
   IF
-    [ DECIMAL 13 ] literal BUFFER_PTR @ BUFFER_LEN @ + 2- C! [ DECIMAL 10 ] literal BUFFER_PTR @ BUFFER_LEN @ + 1- C!
-  ELSE
-    BUFFER_LEN @ 2- BUFFER_LEN !
+    S\" \r\n" ABAPPEND
   THEN
 LOOP
 ;
@@ -237,6 +248,18 @@ EDITOR-RESET-SCREEN
   ROWS @ CY !
 ;
 
+: CHECKTILDE
+  ( *char -- bool)
+  3 + C@
+  CHAR ~ =
+  IF
+    TRUE
+  ELSE
+    FALSE
+  THEN
+;
+    
+
 : PROCESS-ESCAPED-KEY
   ( *addr -- )
   >R                                         \ save address to return stack
@@ -288,45 +311,45 @@ EDITOR-RESET-SCREEN
         THEN
       ENDOF
      CHAR 5 OF
-       R@ 3 + C@
-       CHAR ~ =
+       R@ CHECKTILDE
        IF
          0 CY !                             \ page up
        THEN
      ENDOF
      CHAR 6 OF
-       R@ 3 + C@
-       CHAR ~ =
+       R@ CHECKTILDE
        IF
          ROWS @ CY !                        \ page down
        THEN
      ENDOF
      CHAR 1 OF
-       R@ 3 + C@
-       CHAR ~ =
+       R@ CHECKTILDE
        IF
          HOMEKEY
        THEN
      ENDOF
      CHAR 7 OF
-       R@ 3 + C@
-       CHAR ~ =
+       R@ CHECKTILDE
        IF
          HOMEKEY
        THEN
      ENDOF
      CHAR 4 OF
-       R@ 3 + C@
-       CHAR ~ =
+       R@ CHECKTILDE
        IF
          ENDKEY
        THEN
      ENDOF
      CHAR 8 OF
-       R@ 3 + C@
-       CHAR ~ =
+       R@ CHECKTILDE
        IF
          ENDKEY
+       THEN
+     ENDOF
+     CHAR 3 OF
+       R@ CHECKTILDE
+       IF
+         NOP                                 \ delete key
        THEN
      ENDOF
       DUP OF ENDOF                          \ default
@@ -371,6 +394,15 @@ EDITOR-RESET-SCREEN
 
 ;
 
+\
+\ file io
+\
+: EDITOROPEN
+  ( -- )
+  S\" Hello, world!\n" 1- TEXTROWLEN ! TEXTROW !
+  1 NUMROWS !
+;
+
 
 \
 \ main code section                                    \
@@ -379,6 +411,7 @@ EDITOR-RESET-SCREEN
   0 CX !
   0 CY !
   GET-WINDOW-SIZE
+  EDITOROPEN
   BEGIN
     EDITOR-REFRESH-SCREEN
     EDITOR-PROCESS-KEYPRESS
