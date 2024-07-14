@@ -94,9 +94,6 @@ BUFFER_PTR @ FREE DROPERR
 0 BUFFER_LEN !
 ;
 
-: dupx
-DUP . ;
-
 : ABAPPEND
 ( char* len -- )
 >R                         \ store length to be added on return stack
@@ -398,9 +395,13 @@ EDITOR-RESET-SCREEN
 \ file io
 \
 : EDITOROPEN
-  ( -- )
-  S\" Hello, world!\n" 1- TEXTROWLEN ! TEXTROW !
-  1 NUMROWS !
+  ( c-addr u  -- )
+  S\" r\0" OPEN-FILE
+  0<>
+  IF
+    ABORT" Failed to open file"
+  THEN
+
 ;
 
 
@@ -411,7 +412,13 @@ EDITOR-RESET-SCREEN
   0 CX !
   0 CY !
   GET-WINDOW-SIZE
-  EDITOROPEN
+  PARSE-NAME
+  DUP 0<>
+  IF
+    EDITOROPEN
+  ELSE
+    2DROP
+  THEN
   BEGIN
     EDITOR-REFRESH-SCREEN
     EDITOR-PROCESS-KEYPRESS
