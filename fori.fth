@@ -225,6 +225,18 @@ EDITOR-RESET-SCREEN
 \ input section	
 \
 
+: HOMEKEY
+  ( -- )
+  0 CX !
+  0 CY !
+;
+
+: ENDKEY
+  ( -- )
+  0 CX !
+  ROWS @ CY !
+;
+
 : PROCESS-ESCAPED-KEY
   ( *addr -- )
   >R                                         \ save address to return stack
@@ -233,6 +245,12 @@ EDITOR-RESET-SCREEN
   IF
     R@ 2+ C@                                 \ yes - so process
     CASE
+      CHAR H OF
+        HOMEKEY
+      ENDOF
+      CHAR F OF
+        ENDKEY
+      ENDOF
       CHAR A OF                              \ up arrow
         CY @ DUP
         0<> 
@@ -269,8 +287,66 @@ EDITOR-RESET-SCREEN
           DROP
         THEN
       ENDOF
-      DUP OF ENDOF                     \ default
+     CHAR 5 OF
+       R@ 3 + C@
+       CHAR ~ =
+       IF
+         0 CY !                             \ page up
+       THEN
+     ENDOF
+     CHAR 6 OF
+       R@ 3 + C@
+       CHAR ~ =
+       IF
+         ROWS @ CY !                        \ page down
+       THEN
+     ENDOF
+     CHAR 1 OF
+       R@ 3 + C@
+       CHAR ~ =
+       IF
+         HOMEKEY
+       THEN
+     ENDOF
+     CHAR 7 OF
+       R@ 3 + C@
+       CHAR ~ =
+       IF
+         HOMEKEY
+       THEN
+     ENDOF
+     CHAR 4 OF
+       R@ 3 + C@
+       CHAR ~ =
+       IF
+         ENDKEY
+       THEN
+     ENDOF
+     CHAR 8 OF
+       R@ 3 + C@
+       CHAR ~ =
+       IF
+         ENDKEY
+       THEN
+     ENDOF
+      DUP OF ENDOF                          \ default
     ENDCASE
+  ELSE
+    R@ 1+ C@
+    CHAR O =                                \ handle ^[OH and ^[OF cases
+    IF
+      R@ 2+ C@ >R
+      R@ CHAR H =
+      IF
+        HOMEKEY
+      ELSE
+        R@ CHAR F =
+        IF
+          ENDKEY
+        THEN
+      THEN
+      RDROP
+    THEN
   THEN
   RDROP
 ;
