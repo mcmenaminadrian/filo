@@ -171,6 +171,7 @@ ROWS @ 1+ 1 DO
       COLUMNS @ TEMP !
     THEN
     TEXTROW @ TEMP @ ABAPPEND
+    TEXTROW @ FREE DROPERR
   THEN
   \ ESC[K - redraw line
   S\" \e[K" ABAPPEND
@@ -346,7 +347,7 @@ EDITOR-RESET-SCREEN
      CHAR 3 OF
        R@ CHECKTILDE
        IF
-         NOP                                 \ delete key
+         NOP                                 \ delete key - to be implemented
        THEN
      ENDOF
       DUP OF ENDOF                          \ default
@@ -396,12 +397,23 @@ EDITOR-RESET-SCREEN
 \
 : EDITOROPEN
   ( c-addr u  -- )
-  S\" r\0" OPEN-FILE
+  S\" r\0" DROP OPEN-FILE
   0<>
   IF
     ABORT" Failed to open file"
+  ELSE
+    >R
+    512 ALLOCATE DROPERR DUP 512 R> READ-LINE
+    SWAP TRUE <>
+    IF
+      ." Failure code is " .
+      ABORT" Could not read line."
+    THEN
   THEN
-
+  DROP
+  TEXTROWLEN !
+  TEXTROW !
+  1 NUMROWS !
 ;
 
 
