@@ -96,21 +96,14 @@ BUFFER_PTR @ FREE DROPERR
 
 : ABAPPEND
 ( char* len -- )
->R                         \ store length to be added on return stack
-BUFFER_LEN @               \ get existing length
-0<> IF                     \ if ... not 0
-  BUFFER_PTR @ 
-  BUFFER_LEN @ R@ + RESIZE \ get a buffer of new size
-  DROPERR                  \ get a buffer of new size
-  R@ BUFFER_LEN @ + 
-  BUFFER_LEN !
-ELSE
-  1 DROPERR
-THEN
-BUFFER_PTR !               \ store address
-BUFFER_LEN @ R@ -          \ calculate offset for copying
-BUFFER_PTR @ +             \ add to get start point
-R> MOVE                    \ copy
+>R                                                  \ store old length
+BUFFER_LEN @ TEMP !                                 \ get existing length
+BUFFER_PTR @  BUFFER_LEN @ R@ + RESIZE DROPERR      \ get a buffer of new size
+R@ BUFFER_LEN @ + BUFFER_LEN !                      \ store new size
+BUFFER_PTR !                                        \ store address
+TEMP @                                              \ calculate offset for copying
+BUFFER_PTR @ +                                      \ add to get start point
+R> MOVE                                             \ copy
 ;
 
 \
@@ -170,8 +163,8 @@ ROWS @ 1+ 1 DO
     IF
       COLUMNS @ TEMP !
     THEN
-    TEXTROW @ TEMP @ ABAPPEND
-    TEXTROW @ FREE DROPERR
+    TEXTROW @ TEMP @ NOP ABAPPEND
+    \ TEXTROW @ FREE DROPERR
   THEN
   \ ESC[K - redraw line
   S\" \e[K" ABAPPEND
@@ -200,25 +193,15 @@ S" H" ABAPPEND
 : EDITOR-RESET-SCREEN
   ( -- )
 [ decimal 64 ] literal  ALLOCATE DROPERR BUFFER_PTR !
+0 BUFFER_LEN !
 \ ESC [?25l - make cursor disappear
-[ decimal 27 ] literal BUFFER_PTR @ C!
-CHAR [ BUFFER_PTR @ 1+ C!
-CHAR ? BUFFER_PTR @ 2+ C!
-CHAR 2 BUFFER_PTR @ 3 + C!
-CHAR 5 BUFFER_PTR @ 4 + C!
-CHAR l BUFFER_PTR @ 5 + C!
-[ decimal 6 ] literal BUFFER_LEN !
+S\" \e[?25l" ABAPPEND
+\ ^[[1;1H - position at top of screen
 S\" \e[1;1H" ABAPPEND
 EDITOR-DRAW-ROWS
 MOVE_CURSOR
-6 EXTEND_BUFFER
 \ ESC [?25h - cursor reappear
-[ decimal 27 ] literal BUFFER_PTR @ BUFFER_LEN @ 6 - + C!
-CHAR [ BUFFER_PTR @ BUFFER_LEN @ 5 - + C!
-CHAR ? BUFFER_PTR @  BUFFER_LEN @ 4 -  + C!
-CHAR 2 BUFFER_PTR @  BUFFER_LEN @ 3 - + C!
-CHAR 5 BUFFER_PTR @  BUFFER_LEN @ 2-  + C!
-CHAR h BUFFER_PTR @  BUFFER_LEN @ 1- + C!
+S\" \e[?25h" ABAPPEND
 PRINT_BUFFER
 ABFREE
 ;
@@ -356,17 +339,16 @@ EDITOR-RESET-SCREEN
     R@ 1+ C@
     CHAR O =                                \ handle ^[OH and ^[OF cases
     IF
-      R@ 2+ C@ >R
-      R@ CHAR H =
-      IF
-        HOMEKEY
-      ELSE
-        R@ CHAR F =
-        IF
+      R@ 2+ C@
+      CASE
+        CHAR H OF
+          HOMEKEY
+        ENDOF
+        CHAR F OF
           ENDKEY
-        THEN
-      THEN
-      RDROP
+        ENDOF
+          DUP OF ENDOF
+      ENDCASE
     THEN
   THEN
   RDROP
@@ -389,7 +371,6 @@ EDITOR-RESET-SCREEN
     ENDOF
     DUP OF ENDOF                    \ default
   ENDCASE
-
 ;
 
 \
@@ -403,7 +384,7 @@ EDITOR-RESET-SCREEN
     ABORT" Failed to open file"
   ELSE
     >R
-    512 ALLOCATE DROPERR DUP 512 R> READ-LINE
+    512 ALLOCATE DROPERR DUP 512 R@ READ-LINE
     SWAP TRUE <>
     IF
       ." Failure code is " .
@@ -414,6 +395,7 @@ EDITOR-RESET-SCREEN
   TEXTROWLEN !
   TEXTROW !
   1 NUMROWS !
+  R> CLOSE-FILE
 ;
 
 
