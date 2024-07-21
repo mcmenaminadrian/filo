@@ -10,23 +10,117 @@ DECIMAL 0 CONSTANT STDIN
 DECIMAL 1 CONSTANT STDOUT
 DECIMAL 2 CONSTANT STDERR
 
-VARIABLE TEXTROW
-VARIABLE TEXTROWLEN
-VARIABLE NUMROWS
-
 VARIABLE TEMP
 
 : welcomemsg
-C" Filo editor -- (c) Adrian McMenamin, 2024"
+S" Filo editor -- (c) Adrian McMenamin, 2024"
 ;
+
+VARIABLE ROW-RECORDS
+VARIABLE ROW-COUNT
+
+
+
+\ free everything
+: CLEANROWS
+( -- )
+  ROW-COUNT @ 0<>
+  IF
+    ROW-COUNT @ 1 DO
+      I 1- 16 * ROW-RECORDS @ + 8 + @ FREE
+      0<>
+      IF
+        ABORT" Memory failure in CLEANROWS word"
+      THEN
+    LOOP
+    0 ROW-COUNT !
+  THEN
+  ROW-RECORDS @ FREE DROP
+;
+
+
+\ check for error
+: DROPERR
+0<>
+IF
+  CLEANROWS
+  ABORT" Halting on error"
+THEN
+;
+
+: CLEANROWS-ERR
+  ( u -- )
+  0<> IF
+    CLEANROWS
+    ABORT" Could not allocate additional row"
+  THEN
+;
+
+: SETROW-ERR
+  ( f -- )
+  FALSE =
+  IF
+    CLEANROWS
+    ABORT" Could not add row"
+  THEN
+;
+
+\ set the data at a given index
+: SET-ROW
+  ( ptr* len index -- f )
+  >R R@ ROW-COUNT @ >
+  IF
+    2DROP
+    FALSE
+  ELSE
+    R@ 1- 16 * ROW-RECORDS @ + 48 DROP !                  \ length
+    R@ 1- 16 * ROW-RECORDS @ 8 + + 49 DROP !              \ ptr
+    TRUE
+  THEN
+  RDROP
+;
+ 
+
+
+\ for each row hold a counter for row length and a pointer to a line
+: ADD-ROW
+  (  -- )
+  ROW-COUNT @ 0=
+  IF
+    [ decimal 256 ] literal ALLOCATE DROPERR
+    ROW-RECORDS !
+    1 ROW-COUNT !
+    0 0 1 SET-ROW SETROW-ERR
+  ELSE
+    ROW-RECORDS @
+    ROW-COUNT @ 1+ 16 *
+    RESIZE CLEANROWS-ERR
+    ROW-RECORDS !
+    ROW-COUNT @ 1+ ROW-COUNT !
+    0 0 ROW-COUNT @ SET-ROW SETROW-ERR
+  THEN
+;
+
+\ get the data at a given index
+: GET-ROW
+  ( u -- ptr* len )
+  >R R@ ROW-COUNT @ 1- >
+  IF
+    0 0         \ return nothing
+  ELSE
+    R@ 1- 16 * ROW-RECORDS @ +
+    DUP
+    @ SWAP 8 + @ SWAP
+  THEN
+  RDROP
+;
+
+
 
 \
 \ Utility words					      *
 \
 
-\ check for error
-: DROPERR
-0<> IF ABORT" Halting on error" THEN ;
 
 \ is character on stack CTRL Key for that letter
 : CTRL-KEY ( n c -- f )
@@ -146,25 +240,16 @@ R> BUFFER_LEN @ + BUFFER_LEN !                       \ store new buffer length
 : EDITOR-DRAW-ROWS
 ( -- )
 ROWS @ 1+ 1 DO
-  I NUMROWS @ >
+  I ROW-COUNT @ >
   IF
-    ROWS @ 3 / I =
+    ROW-COUNT @ 0= ROWS @ 3 / I = AND
     IF  \ welcome message
-      welcomemsg @ EXTEND_BUFFER_NO_ADD_LEN
-      welcomemsg 8 + BUFFER_PTR @ BUFFER_LEN @ + welcomemsg @ MOVE
-      BUFFER_LEN @ welcomemsg @ + BUFFER_LEN !
+      welcomemsg ABAPPEND
     ELSE \ tilde
-      1 EXTEND_BUFFER
-      CHAR ~ BUFFER_PTR @ BUFFER_LEN @ + 1- C!
+      S" ~" ABAPPEND
     THEN
   ELSE
-    TEXTROWLEN @ TEMP !
-    TEMP @ COLUMNS @ >
-    IF
-      COLUMNS @ TEMP !
-    THEN
-    TEXTROW @ TEMP @ NOP ABAPPEND
-    \ TEXTROW @ FREE DROPERR
+    I GET-ROW BASE DROP ABAPPEND
   THEN
   \ ESC[K - redraw line
   S\" \e[K" ABAPPEND
@@ -190,7 +275,7 @@ CX @ 1+ >STRING DUP @ SWAP 8 + SWAP ABAPPEND               \ add x
 S" H" ABAPPEND
 ;
 
-: EDITOR-RESET-SCREEN
+: EDITOR-REFRESH-SCREEN
   ( -- )
 [ decimal 64 ] literal  ALLOCATE DROPERR BUFFER_PTR !
 0 BUFFER_LEN !
@@ -206,12 +291,6 @@ PRINT_BUFFER
 ABFREE
 ;
 
-
-: EDITOR-REFRESH-SCREEN
-( -- )
-EDITOR-RESET-SCREEN
-  
-;
 
 \
 \ input section	
@@ -360,7 +439,7 @@ EDITOR-RESET-SCREEN
   CASE
     CHAR Q [ HEX 1F ] LITERAL AND  OF
       DROP
-      EDITOR-RESET-SCREEN
+      CLEANROWS
       CLEARSCREEN
       ABORT" Leaving FILO " CRLF  
     ENDOF
@@ -384,17 +463,15 @@ EDITOR-RESET-SCREEN
     ABORT" Failed to open file"
   ELSE
     >R
-    512 ALLOCATE DROPERR DUP 512 R@ READ-LINE
-    SWAP TRUE <>
-    IF
-      ." Failure code is " .
-      ABORT" Could not read line."
-    THEN
+    BEGIN
+      [ decimal 512 ] literal ALLOCATE DROPERR DUP
+      [ decimal 512 ] literal R@ READ-LINE
+      0= AND
+    WHILE
+      ADD-ROW
+      ROW-COUNT @ SET-ROW SETROW-ERR
+    REPEAT
   THEN
-  DROP
-  TEXTROWLEN !
-  TEXTROW !
-  1 NUMROWS !
   R> CLOSE-FILE
 ;
 
@@ -405,6 +482,8 @@ EDITOR-RESET-SCREEN
 : fori ( -- n )
   0 CX !
   0 CY !
+  0 ROW-RECORDS !
+  0 ROW-COUNT !
   GET-WINDOW-SIZE
   PARSE-NAME
   DUP 0<>
