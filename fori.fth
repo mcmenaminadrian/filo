@@ -248,7 +248,7 @@ IF
   THEN
   ROWS @ CY !
 ELSE
-  CY @ 0 <
+  CY @ 0<
   IF
     ROWOFF @ 0<>
     IF
@@ -385,15 +385,25 @@ ABFREE
         THEN
       ENDOF
      CHAR 5 OF
-       R@ CHECKTILDE
+       R@ CHECKTILDE                       \ page up
        IF
-         0 CY !                             \ page up
+         ROWOFF @ ROWS @ - 0<
+         IF
+           0 ROWOFF !
+         ELSE
+           ROWOFF @ ROWS @ - ROWOFF !
+         THEN
        THEN
      ENDOF
      CHAR 6 OF
-       R@ CHECKTILDE
+       R@ CHECKTILDE                      \ page down
        IF
-         ROWS @ CY !                        \ page down
+         ROWOFF @ ROWS @ + ROW-COUNT @ >
+         IF
+           ROW-COUNT @ ROWS @ - ROWOFF !
+         ELSE
+           ROWOFF @ ROWS @ + ROWOFF !
+         THEN
        THEN
      ENDOF
      CHAR 1 OF
