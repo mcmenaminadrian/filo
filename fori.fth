@@ -5,6 +5,8 @@ VARIABLE ROWS
 VARIABLE COLUMNS
 VARIABLE CX
 VARIABLE CY
+VARIABLE ROWOFF
+VARIABLE FILEROW
 HEX 5413 CONSTANT TIOCGWINSZ
 DECIMAL 0 CONSTANT STDIN
 DECIMAL 1 CONSTANT STDOUT
@@ -114,7 +116,6 @@ THEN
   THEN
   RDROP
 ;
-
 
 
 \
@@ -237,10 +238,32 @@ BUFFER_PTR !                                         \ store new buffer address
 R> BUFFER_LEN @ + BUFFER_LEN !                       \ store new buffer length
 ;
 
+: EDITORSCROLL
+( -- )
+CY @ ROWS @ >
+IF
+  ROWOFF @ ROW-COUNT @ <
+  IF
+    ROWOFF @ 1+ ROWOFF !
+  THEN
+  ROWS @ CY !
+ELSE
+  CY @ 0 <
+  IF
+    ROWOFF @ 0<>
+    IF
+      ROWOFF @ 1- ROWOFF !
+    THEN
+    0 CY !
+  THEN
+THEN
+; 
+
 : EDITOR-DRAW-ROWS
 ( -- )
 ROWS @ 1+ 1 DO
-  I ROW-COUNT @ >
+  I ROWOFF @ + FILEROW !
+  FILEROW @ ROW-COUNT @ >
   IF
     ROW-COUNT @ 0= ROWS @ 3 / I = AND
     IF  \ welcome message
@@ -249,7 +272,7 @@ ROWS @ 1+ 1 DO
       S" ~" ABAPPEND
     THEN
   ELSE
-    I GET-ROW BASE DROP ABAPPEND
+    FILEROW @ GET-ROW ABAPPEND
   THEN
   \ ESC[K - redraw line
   S\" \e[K" ABAPPEND
@@ -277,6 +300,7 @@ S" H" ABAPPEND
 
 : EDITOR-REFRESH-SCREEN
   ( -- )
+EDITORSCROLL
 [ decimal 64 ] literal  ALLOCATE DROPERR BUFFER_PTR !
 0 BUFFER_LEN !
 \ ESC [?25l - make cursor disappear
@@ -335,22 +359,12 @@ ABFREE
         ENDKEY
       ENDOF
       CHAR A OF                              \ up arrow
-        CY @ DUP
-        0<> 
-        IF
-          1- CY !                            \ decrease if not at top of screen
-        ELSE
-          DROP
-        THEN
+        CY @ 
+        1- CY !
       ENDOF
       CHAR B OF                              \ arrow down
-        CY @ DUP
-        ROWS @ 1- <>
-        IF
-          1+ CY !                           \ increase if not at bottom of screen
-        ELSE
-          DROP
-        THEN
+        CY @
+        1+ CY !                              \ attempt to increase
       ENDOF
       CHAR C OF                             \ arrow right
         CX @ DUP
@@ -484,6 +498,7 @@ ABFREE
   0 CY !
   0 ROW-RECORDS !
   0 ROW-COUNT !
+  0 ROWOFF !
   GET-WINDOW-SIZE
   PARSE-NAME
   DUP 0<>
