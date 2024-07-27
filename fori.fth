@@ -5,22 +5,123 @@ VARIABLE ROWS
 VARIABLE COLUMNS
 VARIABLE CX
 VARIABLE CY
+VARIABLE ROWOFF
+VARIABLE FILEROW
 HEX 5413 CONSTANT TIOCGWINSZ
 DECIMAL 0 CONSTANT STDIN
 DECIMAL 1 CONSTANT STDOUT
 DECIMAL 2 CONSTANT STDERR
 
+VARIABLE TEMP
+
 : welcomemsg
-C" Filo editor -- (c) Adrian McMenamin, 2024"
+S" Filo editor -- (c) Adrian McMenamin, 2024"
 ;
+
+VARIABLE ROW-RECORDS
+VARIABLE ROW-COUNT
+
+
+
+\ free everything
+: CLEANROWS
+( -- )
+  ROW-COUNT @ 0<>
+  IF
+    ROW-COUNT @ 1 DO
+      I 1- 16 * ROW-RECORDS @ + 8 + @ FREE
+      0<>
+      IF
+        ABORT" Memory failure in CLEANROWS word"
+      THEN
+    LOOP
+    0 ROW-COUNT !
+  THEN
+  ROW-RECORDS @ FREE DROP
+;
+
+
+\ check for error
+: DROPERR
+0<>
+IF
+  CLEANROWS
+  ABORT" Halting on error"
+THEN
+;
+
+: CLEANROWS-ERR
+  ( u -- )
+  0<> IF
+    CLEANROWS
+    ABORT" Could not allocate additional row"
+  THEN
+;
+
+: SETROW-ERR
+  ( f -- )
+  FALSE =
+  IF
+    CLEANROWS
+    ABORT" Could not add row"
+  THEN
+;
+
+\ set the data at a given index
+: SET-ROW
+  ( ptr* len index -- f )
+  >R R@ ROW-COUNT @ >
+  IF
+    2DROP
+    FALSE
+  ELSE
+    R@ 1- 16 * ROW-RECORDS @ + 48 DROP !                  \ length
+    R@ 1- 16 * ROW-RECORDS @ 8 + + 49 DROP !              \ ptr
+    TRUE
+  THEN
+  RDROP
+;
+ 
+
+
+\ for each row hold a counter for row length and a pointer to a line
+: ADD-ROW
+  (  -- )
+  ROW-COUNT @ 0=
+  IF
+    [ decimal 256 ] literal ALLOCATE DROPERR
+    ROW-RECORDS !
+    1 ROW-COUNT !
+    0 0 1 SET-ROW SETROW-ERR
+  ELSE
+    ROW-RECORDS @
+    ROW-COUNT @ 1+ 16 *
+    RESIZE CLEANROWS-ERR
+    ROW-RECORDS !
+    ROW-COUNT @ 1+ ROW-COUNT !
+    0 0 ROW-COUNT @ SET-ROW SETROW-ERR
+  THEN
+;
+
+\ get the data at a given index
+: GET-ROW
+  ( u -- ptr* len )
+  >R R@ ROW-COUNT @ 1- >
+  IF
+    0 0         \ return nothing
+  ELSE
+    R@ 1- 16 * ROW-RECORDS @ +
+    DUP
+    @ SWAP 8 + @ SWAP
+  THEN
+  RDROP
+;
+
 
 \
 \ Utility words					      *
 \
 
-\ check for error
-: DROPERR
-0<> IF ABORT" Halting on error" THEN ;
 
 \ is character on stack CTRL Key for that letter
 : CTRL-KEY ( n c -- f )
@@ -66,7 +167,7 @@ THEN
 ;
 
 : EDITOR-READ-KEY
-  ( -- c )
+  ( -- c *scratchpad)
   KEYRAW
 ;
 
@@ -88,31 +189,16 @@ BUFFER_PTR @ FREE DROPERR
 0 BUFFER_LEN !
 ;
 
-: dupx
-DUP . ;
-
 : ABAPPEND
 ( char* len -- )
->R                         \ store length to be added on return stack
-BUFFER_LEN @               \ get existing length
-0<> IF                     \ if ... not 0
-  BUFFER_PTR @ 
-  BUFFER_LEN @ R@ + RESIZE \ get a buffer of new size
-  DROPERR                  \ get a buffer of new size
-  R@ BUFFER_LEN @ + 
-  BUFFER_LEN !
-THEN
-BUFFER_PTR !               \ store address
-BUFFER_LEN @ R@ -          \ calculate offset for copying
-BUFFER_PTR @ +             \ add to get start point
-SWAP                       \ save that further back on the stack
-R> 0 DO                    \ start loop
-  DUP                      \ duplicate string base address
-  I + C@                   \ character in string
-  2 PICK                   \ get start from stack
-  I + C!                   \ copy character
-LOOP 
-2DROP
+>R                                                  \ store old length
+BUFFER_LEN @ TEMP !                                 \ get existing length
+BUFFER_PTR @  BUFFER_LEN @ R@ + RESIZE DROPERR      \ get a buffer of new size
+R@ BUFFER_LEN @ + BUFFER_LEN !                      \ store new size
+BUFFER_PTR !                                        \ store address
+TEMP @                                              \ calculate offset for copying
+BUFFER_PTR @ +                                      \ add to get start point
+R> MOVE                                             \ copy
 ;
 
 \
@@ -152,28 +238,47 @@ BUFFER_PTR !                                         \ store new buffer address
 R> BUFFER_LEN @ + BUFFER_LEN !                       \ store new buffer length
 ;
 
+: EDITORSCROLL
+( -- )
+CY @ ROWS @ >
+IF
+  ROWOFF @ ROW-COUNT @ <
+  IF
+    ROWOFF @ 1+ ROWOFF !
+  THEN
+  ROWS @ CY !
+ELSE
+  CY @ 0<
+  IF
+    ROWOFF @ 0<>
+    IF
+      ROWOFF @ 1- ROWOFF !
+    THEN
+    0 CY !
+  THEN
+THEN
+; 
+
 : EDITOR-DRAW-ROWS
 ( -- )
 ROWS @ 1+ 1 DO
-  ROWS @ 3 / I =
-  IF  \ welcome message
-    welcomemsg @ EXTEND_BUFFER_NO_ADD_LEN
-    welcomemsg 8 + BUFFER_PTR @ BUFFER_LEN @ + welcomemsg @ MOVE
-    BUFFER_LEN @ welcomemsg @ + BUFFER_LEN !
-    5 EXTEND_BUFFER
-  ELSE \ tilde
-    6 EXTEND_BUFFER
-    CHAR ~ BUFFER_PTR @ BUFFER_LEN @ + 6 - C!
+  I ROWOFF @ + FILEROW !
+  FILEROW @ ROW-COUNT @ >
+  IF
+    ROW-COUNT @ 0= ROWS @ 3 / I = AND
+    IF  \ welcome message
+      welcomemsg ABAPPEND
+    ELSE \ tilde
+      S" ~" ABAPPEND
+    THEN
+  ELSE
+    FILEROW @ GET-ROW ABAPPEND
   THEN
   \ ESC[K - redraw line
-  [ decimal 27 ] literal BUFFER_PTR @ BUFFER_LEN @ 5 - + C!
-  CHAR [ BUFFER_PTR @ BUFFER_LEN @ 4 - + C!
-  CHAR K BUFFER_PTR @ BUFFER_LEN @ 3 - + C!
+  S\" \e[K" ABAPPEND
   I ROWS @ <
   IF
-    [ DECIMAL 13 ] literal BUFFER_PTR @ BUFFER_LEN @ + 2- C! [ DECIMAL 10 ] literal BUFFER_PTR @ BUFFER_LEN @ + 1- C!
-  ELSE
-    BUFFER_LEN @ 2- BUFFER_LEN !
+    S\" \r\n" ABAPPEND
   THEN
 LOOP
 ;
@@ -186,73 +291,212 @@ BUFFER_PTR @ BUFFER_LEN @ TYPE
 
 : MOVE_CURSOR
 ( -- )
-S\" \e[" ABAPPEND                                     \ first part of escape sequence
+S\" \e[" ABAPPEND                                          \ first part of escape sequence
 CY @ 1+ >STRING DUP @ SWAP 8 + SWAP ABAPPEND               \ add y
 S" ;" ABAPPEND
 CX @ 1+ >STRING DUP @ SWAP 8 + SWAP ABAPPEND               \ add x
 S" H" ABAPPEND
 ;
 
-: EDITOR-RESET-SCREEN
+: EDITOR-REFRESH-SCREEN
   ( -- )
+EDITORSCROLL
 [ decimal 64 ] literal  ALLOCATE DROPERR BUFFER_PTR !
+0 BUFFER_LEN !
 \ ESC [?25l - make cursor disappear
-[ decimal 27 ] literal BUFFER_PTR @ C!
-CHAR [ BUFFER_PTR @ 1+ C!
-CHAR ? BUFFER_PTR @ 2+ C!
-CHAR 2 BUFFER_PTR @ 3 + C!
-CHAR 5 BUFFER_PTR @ 4 + C!
-CHAR l BUFFER_PTR @ 5 + C!
-[ decimal 6 ] literal BUFFER_LEN !
+S\" \e[?25l" ABAPPEND
+\ ^[[1;1H - position at top of screen
+S\" \e[1;1H" ABAPPEND
 EDITOR-DRAW-ROWS
 MOVE_CURSOR
-6 EXTEND_BUFFER
 \ ESC [?25h - cursor reappear
-[ decimal 27 ] literal BUFFER_PTR @ BUFFER_LEN @ 6 - + C!
-CHAR [ BUFFER_PTR @ BUFFER_LEN @ 5 - + C!
-CHAR ? BUFFER_PTR @  BUFFER_LEN @ 4 -  + C!
-CHAR 2 BUFFER_PTR @  BUFFER_LEN @ 3 - + C!
-CHAR 5 BUFFER_PTR @  BUFFER_LEN @ 2-  + C!
-CHAR h BUFFER_PTR @  BUFFER_LEN @ 1- + C!
+S\" \e[?25h" ABAPPEND
 PRINT_BUFFER
-BUFFER_PTR @ FREE DROPERR
-0 BUFFER_LEN !
+ABFREE
 ;
 
-
-: EDITOR-REFRESH-SCREEN
-( -- )
-EDITOR-RESET-SCREEN
-  
-;
 
 \
 \ input section	
 \
 
+: HOMEKEY
+  ( -- )
+  0 CX !
+  0 CY !
+;
+
+: ENDKEY
+  ( -- )
+  0 CX !
+  ROWS @ CY !
+;
+
+: CHECKTILDE
+  ( *char -- bool)
+  3 + C@
+  CHAR ~ =
+  IF
+    TRUE
+  ELSE
+    FALSE
+  THEN
+;
+    
+
+: PROCESS-ESCAPED-KEY
+  ( *addr -- )
+  >R                                         \ save address to return stack
+  R@ 1+ C@                                   \ get next character
+  CHAR [ =                                   \ is it [?
+  IF
+    R@ 2+ C@                                 \ yes - so process
+    CASE
+      CHAR H OF
+        HOMEKEY
+      ENDOF
+      CHAR F OF
+        ENDKEY
+      ENDOF
+      CHAR A OF                              \ up arrow
+        CY @ 
+        1- CY !
+      ENDOF
+      CHAR B OF                              \ arrow down
+        CY @
+        1+ CY !                              \ attempt to increase
+      ENDOF
+      CHAR C OF                             \ arrow right
+        CX @ DUP
+        COLUMNS @ 1- <>                     \ not at right hand edge
+        IF
+          1+ CX !
+        ELSE
+          DROP
+        THEN
+      ENDOF
+      CHAR D OF                            \ arrow left
+        CX @ DUP
+        0<>
+        IF
+          1- CX !                          \ move left if not already at edge
+        ELSE
+          DROP
+        THEN
+      ENDOF
+     CHAR 5 OF
+       R@ CHECKTILDE                       \ page up
+       IF
+         ROWOFF @ ROWS @ - 0<
+         IF
+           0 ROWOFF !
+         ELSE
+           ROWOFF @ ROWS @ - ROWOFF !
+         THEN
+       THEN
+     ENDOF
+     CHAR 6 OF
+       R@ CHECKTILDE                      \ page down
+       IF
+         ROWOFF @ ROWS @ + ROW-COUNT @ >
+         IF
+           ROW-COUNT @ ROWS @ - ROWOFF !
+         ELSE
+           ROWOFF @ ROWS @ + ROWOFF !
+         THEN
+       THEN
+     ENDOF
+     CHAR 1 OF
+       R@ CHECKTILDE
+       IF
+         HOMEKEY
+       THEN
+     ENDOF
+     CHAR 7 OF
+       R@ CHECKTILDE
+       IF
+         HOMEKEY
+       THEN
+     ENDOF
+     CHAR 4 OF
+       R@ CHECKTILDE
+       IF
+         ENDKEY
+       THEN
+     ENDOF
+     CHAR 8 OF
+       R@ CHECKTILDE
+       IF
+         ENDKEY
+       THEN
+     ENDOF
+     CHAR 3 OF
+       R@ CHECKTILDE
+       IF
+         NOP                                 \ delete key - to be implemented
+       THEN
+     ENDOF
+      DUP OF ENDOF                          \ default
+    ENDCASE
+  ELSE
+    R@ 1+ C@
+    CHAR O =                                \ handle ^[OH and ^[OF cases
+    IF
+      R@ 2+ C@
+      CASE
+        CHAR H OF
+          HOMEKEY
+        ENDOF
+        CHAR F OF
+          ENDKEY
+        ENDOF
+          DUP OF ENDOF
+      ENDCASE
+    THEN
+  THEN
+  RDROP
+;
+      
 : EDITOR-PROCESS-KEYPRESS
   ( --  )
   EDITOR-READ-KEY
   CASE
     CHAR Q [ HEX 1F ] LITERAL AND  OF
-      EDITOR-RESET-SCREEN
+      DROP
+      CLEANROWS
       CLEARSCREEN
       ABORT" Leaving FILO " CRLF  
     ENDOF
-    CHAR a OF
-      CX @ 1- CX !
+    CASE
+      [ decimal 27 ] literal  OF
+        SWAP
+        PROCESS-ESCAPED-KEY
     ENDOF
-    CHAR d OF
-      CX @ 1+ CX !
-    ENDOF
-    CHAR w OF
-      CY @ 1- CY !
-    ENDOF
-    CHAR s OF
-      CY @ 1+ CY !
-    ENDOF
+    DUP OF ENDOF                    \ default
   ENDCASE
+;
 
+\
+\ file io
+\
+: EDITOROPEN
+  ( c-addr u  -- )
+  S\" r\0" DROP OPEN-FILE
+  0<>
+  IF
+    ABORT" Failed to open file"
+  ELSE
+    >R
+    BEGIN
+      [ decimal 512 ] literal ALLOCATE DROPERR DUP
+      [ decimal 512 ] literal R@ READ-LINE
+      0= AND
+    WHILE
+      ADD-ROW
+      ROW-COUNT @ SET-ROW SETROW-ERR
+    REPEAT
+  THEN
+  R> CLOSE-FILE
 ;
 
 
@@ -262,7 +506,17 @@ EDITOR-RESET-SCREEN
 : fori ( -- n )
   0 CX !
   0 CY !
+  0 ROW-RECORDS !
+  0 ROW-COUNT !
+  0 ROWOFF !
   GET-WINDOW-SIZE
+  PARSE-NAME
+  DUP 0<>
+  IF
+    EDITOROPEN
+  ELSE
+    2DROP
+  THEN
   BEGIN
     EDITOR-REFRESH-SCREEN
     EDITOR-PROCESS-KEYPRESS
