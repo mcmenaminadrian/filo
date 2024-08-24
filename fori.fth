@@ -46,8 +46,8 @@ VARIABLE ROW-COUNT
 : DROPERR
 0<>
 IF
+  ." Halting on Error..." CR
   CLEANROWS
-  ." Halting on error" 
   ABORT
 THEN 
 ;
@@ -55,8 +55,8 @@ THEN
 : CLEANROWS-ERR
   ( u -- )
   0<> IF
+    ." Could not allocate additional row..." CR
     CLEANROWS
-    ." Could not allocate additional row"
     ABORT
   THEN
 ;
@@ -65,8 +65,9 @@ THEN
   ( f -- )
   FALSE =
   IF
+    ." Could not add row" CR
     CLEANROWS
-    ABORT" Could not add row"
+    ABORT
   THEN
 ;
 
@@ -93,7 +94,7 @@ THEN
   (  -- )
   ROW-COUNT @ 0=
   IF
-    [ decimal 256 ] literal ALLOCATE DROPERR
+    [ decimal 1024 ] literal ALLOCATE DROPERR
     ROW-RECORDS !
     1 ROW-COUNT !
     0 0 1 SET-ROW SETROW-ERR
@@ -153,20 +154,21 @@ THEN
 \
 
 : GET-WINDOW-SIZE
-( -- )
-[ DECIMAL 16 ] LITERAL ALLOCATE DROPERR
->R
-STDOUT TIOCGWINSZ R@ IOCTL
-0=
-IF
-  DROP
-  R@ C@ R@ 1+ C@ [ HEX FF ] LITERAL * + ROWS !
-  R@ 2+ C@ R@ 3 + C@ [ HEX FF ] LITERAL * + COLUMNS !
-  R> FREE DROPERR
-ELSE
-  ." ERRNO: " . CR
-  R> FREE DROPERR
-  ABORT" IOCTL failed"
+  ( -- )
+  SIXTEEN ALLOCATE DROPERR
+  >R
+  STDOUT TIOCGWINSZ R@ IOCTL
+  0=
+  IF
+    DROP
+    R@ C@ R@ 1+ C@ [ HEX FF ] LITERAL * + ROWS !
+    R@ 2+ C@ R@ 3 + C@ [ HEX FF ] LITERAL * + COLUMNS !
+    R> FREE DROPERR
+  ELSE
+    ." ERRNO: " . CR
+    R> FREE DROPERR
+    ." IOCTL failed"
+    ABORT
 THEN
 ;
 
@@ -481,7 +483,8 @@ VARIABLE BUFFER_LEN
       DROP
       CLEANROWS
       CLEARSCREEN
-      ABORT" Leaving FILO " CRLF  
+      ." Leaving FILO " CR
+      ABORT
     ENDOF
     CASE
       [ decimal 27 ] literal  OF
@@ -506,13 +509,15 @@ VARIABLE BUFFER_LEN
     0= AND
   WHILE
     ADD-ROW
-    DUP DUP >R ALLOCATE DROPERR >R                    \ allocate a buffer same size as the line  r-stack: handle, addr, len
-    R@ LINEBUFFER @                                   \ stack:  len, addr, linebuffer
-    ROT                                               \ stack: linebuffer, len, addr
-    SWAP                                              \ stack: linebuffer, addr, len
-    MOVE                                              \ copy the line into the buffer
-    R> R> SWAP ROW-COUNT @
-    SET-ROW SETROW-ERR
+    DUP 0<>
+    IF
+      DUP DUP >R ALLOCATE DROPERR >R                    \ allocate a buffer same size as the line  r-stack: handle, len, addr
+      R@ LINEBUFFER @                                   \ stack:  len, addr, linebuffer
+      SWAP ROT                                          \ stack: linebuffer, addr, len
+      MOVE                                              \ copy the line into the buffer
+      R> R> SWAP ROW-COUNT @
+      SET-ROW SETROW-ERR
+    THEN
   REPEAT
   LINEBUFFER @ FREE DROPERR
   R> CLOSE-FILE DROP
