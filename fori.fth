@@ -32,7 +32,11 @@ VARIABLE ROW-COUNT
   ROW-COUNT @ 0<>
   IF
     ROW-COUNT @ 1 DO
-      I 1- SIXTEEN * ROW-RECORDS @ + EIGHT + @ FREE
+      I 1- SIXTEEN * ROW-RECORDS @ + EIGHT + @ 
+      DUP 0<>
+      IF
+        FREE
+      THEN
       0<>
         ABORT" Memory failure in CLEANROWS word"
     LOOP
@@ -197,14 +201,19 @@ VARIABLE BUFFER_LEN
 
 : ABAPPEND
   ( char* len -- )
-  >R                                                  \ store old length
-  BUFFER_LEN @ TEMP !                                 \ get existing length
-  BUFFER_PTR @  BUFFER_LEN @ R@ + RESIZE DROPERR      \ get a buffer of new size
-  R@ BUFFER_LEN @ + BUFFER_LEN !                      \ store new size
-  BUFFER_PTR !                                        \ store address
-  TEMP @                                              \ calculate offset for copying
-  BUFFER_PTR @ +                                      \ add to get start point
-  R> MOVE                                             \ copy
+  DUP 0<>
+  IF
+    >R                                                  \ store old length
+    BUFFER_LEN @ TEMP !                                 \ get existing length
+    BUFFER_PTR @  BUFFER_LEN @ R@ + RESIZE DROPERR      \ get a buffer of new size
+    R@ BUFFER_LEN @ + BUFFER_LEN !                      \ store new size
+    BUFFER_PTR !                                        \ store address
+    TEMP @                                              \ calculate offset for copying
+    BUFFER_PTR @ +                                      \ add to get start point
+    R> MOVE                                             \ copy
+  ELSE
+    2DROP
+  THEN
 ;
 
 \
@@ -226,22 +235,6 @@ VARIABLE BUFFER_LEN
   CHAR H R@ 6 + C!
   R@ 7 TYPE
   R> FREE DROPERR
-;
-
-: EXTEND_BUFFER_NO_ADD_LEN
-  ( n --  )
-  BUFFER_LEN @ +                                       \ get new length we seek
-  BUFFER_PTR @ SWAP RESIZE DROPERR                     \ get resized buffer
-  BUFFER_PTR !                                         \ store new buffer address
-;
-
-: EXTEND_BUFFER
-  ( n -- )
-  DUP >R                                               \ duplicate and store extension length
-  BUFFER_LEN @ +                                       \ get new length we seek
-  BUFFER_PTR @ SWAP RESIZE DROPERR                     \ get resized buffer
-  BUFFER_PTR !                                         \ store new buffer address
-  R> BUFFER_LEN @ + BUFFER_LEN !                       \ store new buffer length
 ;
 
 : EDITORSCROLL
@@ -298,9 +291,9 @@ VARIABLE BUFFER_LEN
 : MOVE_CURSOR
   ( -- )
   S\" \e[" ABAPPEND                                          \ first part of escape sequence
-  CY @ 1+ >STRING DUP @ SWAP 8 + SWAP ABAPPEND               \ add y
+  CY @ 1+ >STRING COUNT ABAPPEND                             \ add y
   S" ;" ABAPPEND
-  CX @ 1+ >STRING DUP @ SWAP 8 + SWAP ABAPPEND               \ add x
+  CX @ 1+ >STRING COUNT ABAPPEND                             \ add x
   S" H" ABAPPEND
 ;
 
@@ -408,13 +401,13 @@ VARIABLE BUFFER_LEN
     ENDOF
     CHAR 5 OF
       R@ CHECKTILDE                       \ page up
-      IF
+      IF NOP
         ROWOFF @ ROWS @ - 0<
         IF
           0 ROWOFF !
         ELSE
           ROWOFF @ ROWS @ - ROWOFF !
-        THEN
+        THEN NOP
       THEN
     ENDOF
     CHAR 6 OF
@@ -491,7 +484,7 @@ VARIABLE BUFFER_LEN
         SWAP
         PROCESS-ESCAPED-KEY
     ENDOF
-    DUP OF ENDOF                    \ default
+    DUP OF DROP ENDOF                    \ default
   ENDCASE
 ;
 
@@ -501,7 +494,11 @@ VARIABLE BUFFER_LEN
 : EDITOROPEN
   ( c-addr u  -- )
   S\" r\0" DROP OPEN-FILE
-  ABORT" Failed to open file"
+  0<> IF
+    DROP
+    ." Halting: Failed to open file" CR
+    ABORT
+  THEN
   >R
   LINESIZE ALLOCATE DROPERR LINEBUFFER !
   BEGIN
@@ -515,14 +512,16 @@ VARIABLE BUFFER_LEN
       R@ LINEBUFFER @                                   \ stack:  len, addr, linebuffer
       SWAP ROT                                          \ stack: linebuffer, addr, len
       MOVE                                              \ copy the line into the buffer
-      R> R> SWAP ROW-COUNT @
+      R> R> ROW-COUNT @
       SET-ROW SETROW-ERR
+    ELSE
+      DROP
     THEN
   REPEAT
+  DROP
   LINEBUFFER @ FREE DROPERR
   R> CLOSE-FILE DROP
 ;
-
 
 \
 \ main code section                                    \
@@ -544,7 +543,7 @@ VARIABLE BUFFER_LEN
   BEGIN
     EDITOR-REFRESH-SCREEN
     EDITOR-PROCESS-KEYPRESS
-    0
+    FALSE
   UNTIL
   0
 ;
