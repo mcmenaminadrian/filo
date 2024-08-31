@@ -373,13 +373,13 @@ VARIABLE BUFFER_LEN
     CHAR F OF
       ENDKEY
     ENDOF
-    CHAR A OF                              \ up arrow
+    CHAR A OF                             \ up arrow
       CY @ 
       1- CY !
     ENDOF
-    CHAR B OF                              \ arrow down
+    CHAR B OF                             \ arrow down
       CY @
-      1+ CY !                              \ attempt to increase
+      1+ CY !                             \ attempt to increase
     ENDOF
     CHAR C OF                             \ arrow right
       CX @ DUP
@@ -388,6 +388,8 @@ VARIABLE BUFFER_LEN
         1+ CX !
       ELSE
         DROP
+        0 CX !
+        CY @ 1+ CY !
       THEN
     ENDOF
     CHAR D OF                            \ arrow left
@@ -397,6 +399,7 @@ VARIABLE BUFFER_LEN
         1- CX !                          \ move left if not already at edge
       ELSE
         DROP
+        CY @ 1- CY !
       THEN
     ENDOF
     CHAR 5 OF
