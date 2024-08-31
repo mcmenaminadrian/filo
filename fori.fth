@@ -287,6 +287,26 @@ VARIABLE BUFFER_LEN
   BUFFER_PTR @ BUFFER_LEN @ TYPE
 ;
 
+: LINE-LENGTH
+  ( index -- len )
+  ROWOFF @ + 1+       \ get the line length at an index
+  GET-ROW
+  SWAP
+  DROP
+;
+
+: ADJUST-FOR-LENGTH
+  ( -- )
+  CY @ LINE-LENGTH    \ move the cursor to the end of a line if needed
+  DUP
+  CX @ <
+  IF
+    CX !
+  ELSE
+    DROP
+  THEN
+;
+
 
 : MOVE_CURSOR
   ( -- )
@@ -376,14 +396,16 @@ VARIABLE BUFFER_LEN
     CHAR A OF                             \ up arrow
       CY @ 
       1- CY !
+      ADJUST-FOR-LENGTH
     ENDOF
     CHAR B OF                             \ arrow down
       CY @
       1+ CY !                             \ attempt to increase
+      ADJUST-FOR-LENGTH
     ENDOF
     CHAR C OF                             \ arrow right
       CX @ DUP
-      COLUMNS @ 1- <>                     \ not at right hand edge
+      CY @ LINE-LENGTH <>                 \ not at right hand edge
       IF
         1+ CX !
       ELSE
@@ -400,6 +422,8 @@ VARIABLE BUFFER_LEN
       ELSE
         DROP
         CY @ 1- CY !
+        COLUMNS @ CX !                   \ force to end of line
+        ADJUST-FOR-LENGTH
       THEN
     ENDOF
     CHAR 5 OF
