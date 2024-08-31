@@ -401,13 +401,13 @@ VARIABLE BUFFER_LEN
     ENDOF
     CHAR 5 OF
       R@ CHECKTILDE                       \ page up
-      IF NOP
+      IF 
         ROWOFF @ ROWS @ - 0<
         IF
           0 ROWOFF !
         ELSE
           ROWOFF @ ROWS @ - ROWOFF !
-        THEN NOP
+        THEN 
       THEN
     ENDOF
     CHAR 6 OF
@@ -473,7 +473,7 @@ VARIABLE BUFFER_LEN
   EDITOR-READ-KEY
   CASE
     CHAR Q [ HEX 1F ] LITERAL AND  OF
-      DROP
+      2DROP
       CLEANROWS
       CLEARSCREEN
       ." Leaving FILO " CR
