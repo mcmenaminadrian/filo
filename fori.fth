@@ -30,6 +30,7 @@ VARIABLE ROW-COUNT
 \ free everything
 : CLEANROWS
 ( -- )
+  ." Clean up" CR
   ROW-COUNT @ 0<>
   IF
     ROW-COUNT @ 1 DO
@@ -145,7 +146,7 @@ THEN
   ELSE
     DROP
   THEN
-  R@ 1- RECORDGAP * @ 1+ ROW-RECORDS @ + DUP                        \ stack: rsize rsize
+  R@ 1- RECORDGAP * ROW-RECORDS @ + @ 1+ DUP                        \ stack: rsize rsize
   ALLOCATE DROPERR                                                  \ stack: rsize rbuff
   R@ 1- RECORDGAP * INTRASPACE + ROW-RECORDS @ + @                  \ stack: rsize rbuff buff
   SWAP                                                              \ stack: rsize buff rbuff
@@ -153,7 +154,7 @@ THEN
   4 PICK 1-                                                         \ stack: rsize buff rbuff buff rbuff size
   MOVE                                                              \ stack: rsize buff rbuff
   R> 1- RECORDGAP * INTRAGAP + ROW-RECORDS @ +                      \ stack: rsize buff rbuff addr
-  CHAR [ hex 10 ] literal                                           \ stack: rsize buff rbuff addr \n
+  [ hex 10 ] literal                                           \ stack: rsize buff rbuff addr \n
   2 PICK                                                            \ stack: rsize buff rbuff addr \n rbuff
   5 PICK 1- + C!                                                    \ stack: rsize buff rbuff addr
   3 PICK 1 PICK !                                                   \ store length
