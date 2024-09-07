@@ -40,6 +40,10 @@ VARIABLE ROW-COUNT
       THEN
       0<>
         ABORT" Memory failure in CLEANROWS word"
+      I 1- RECORDGAP * ROW-RECORDS @ + INTRASPACE + INTRAGAP + @
+      FREE
+      0<>
+        ABORT" Failure to clear render buffer"
     LOOP
     0 ROW-COUNT !
   THEN
@@ -128,6 +132,35 @@ THEN
   THEN
   RDROP
 ;
+
+\ create a render row
+: EDITOR-UPDATE-ROW
+  ( index -- )
+  >R                                                                \ save index
+  R@ 1- RECORDGAP * INTRASPACE + INTRAGAP + ROW-RECORDS @ + @       \ fetch render pointer
+  DUP                                                               \ duplicate
+  0<>                                                               \ test not zero
+  IF
+    FREE                                                            \ if not zero, free
+  ELSE
+    DROP
+  THEN
+  R@ 1- RECORDGAP * @ 1+ ROW-RECORDS @ + DUP                        \ stack: rsize rsize
+  ALLOCATE DROPERR                                                  \ stack: rsize rbuff
+  R@ 1- RECORDGAP * INTRASPACE + ROW-RECORDS @ + @                  \ stack: rsize rbuff buff
+  SWAP                                                              \ stack: rsize buff rbuff
+  2DUP                                                              \ stack: rsize buff rbuff buff rbuff
+  4 PICK 1-                                                         \ stack: rsize buff rbuff buff rbuff size
+  MOVE                                                              \ stack: rsize buff rbuff
+  R> 1- RECORDGAP * INTRAGAP + ROW-RECORDS @ +                      \ stack: rsize buff rbuff addr
+  CHAR [ hex 10 ] literal                                           \ stack: rsize buff rbuff addr \n
+  2 PICK                                                            \ stack: rsize buff rbuff addr \n rbuff
+  5 PICK 1- + C!                                                    \ stack: rsize buff rbuff addr
+  3 PICK 1 PICK !                                                   \ store length
+  1 PICK 1 PICK INTRASPACE + !                                      \ store rbuff
+  2DROP 2DROP                                                       \ clear stack
+;
+
 
 
 \
@@ -544,6 +577,7 @@ VARIABLE BUFFER_LEN
       MOVE                                              \ copy the line into the buffer
       R> R> ROW-COUNT @
       SET-ROW SETROW-ERR
+      ROW-COUNT @ EDITOR-UPDATE-ROW
     ELSE
       DROP
     THEN
