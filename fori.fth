@@ -11,8 +11,9 @@ HEX 5413 CONSTANT TIOCGWINSZ
 DECIMAL 0 CONSTANT STDIN
 DECIMAL 1 CONSTANT STDOUT
 DECIMAL 2 CONSTANT STDERR
-DECIMAL 16 CONSTANT SIXTEEN
-DECIMAL 8 CONSTANT EIGHT
+DECIMAL 16 CONSTANT INTRAGAP
+DECIMAL 8 CONSTANT INTRASPACE
+DECIMAL 32 CONSTANT RECORDGAP
 DECIMAL 512 CONSTANT LINESIZE
 VARIABLE LINEBUFFER
 VARIABLE TEMP
@@ -32,7 +33,7 @@ VARIABLE ROW-COUNT
   ROW-COUNT @ 0<>
   IF
     ROW-COUNT @ 1 DO
-      I 1- SIXTEEN * ROW-RECORDS @ + EIGHT + @ 
+      I 1- RECORDGAP * ROW-RECORDS @ + INTRASPACE + @ 
       DUP 0<>
       IF
         FREE
@@ -83,9 +84,11 @@ THEN
     2DROP
     FALSE
   ELSE
-    R@ 1- SIXTEEN * ROW-RECORDS @ + >R
+    R@ 1- RECORDGAP * ROW-RECORDS @ + >R
     R@ !                                                   \ length
-    R> EIGHT + !                                           \ ptr
+    R@ INTRASPACE + !                                      \ ptr
+    0 R> INTRAGAP + >R R@ !                                \ render length 0
+    0 R> INTRAGAP + !                                      \ render ptr null
     TRUE
   THEN                 
   RDROP
@@ -104,7 +107,7 @@ THEN
     0 0 1 SET-ROW SETROW-ERR
   ELSE
     ROW-RECORDS @
-    ROW-COUNT @ 1+ SIXTEEN *
+    ROW-COUNT @ 1+ RECORDGAP *
     RESIZE CLEANROWS-ERR
     ROW-RECORDS !
     ROW-COUNT @ 1+ ROW-COUNT !
@@ -119,9 +122,9 @@ THEN
   IF
     0 0         \ return nothing
   ELSE
-    R@ 1- SIXTEEN * ROW-RECORDS @ +
+    R@ 1- RECORDGAP * ROW-RECORDS @ +
     DUP
-    @ SWAP EIGHT + @ SWAP
+    @ SWAP INTRASPACE + @ SWAP
   THEN
   RDROP
 ;
@@ -159,7 +162,7 @@ THEN
 
 : GET-WINDOW-SIZE
   ( -- )
-  SIXTEEN ALLOCATE DROPERR
+  16 ALLOCATE DROPERR
   >R
   STDOUT TIOCGWINSZ R@ IOCTL
   0=
