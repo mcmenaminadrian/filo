@@ -17,6 +17,7 @@ DECIMAL 32 CONSTANT RECORDGAP
 DECIMAL 512 CONSTANT LINESIZE
 VARIABLE LINEBUFFER
 VARIABLE TEMP
+VARIABLE SIZE-OF-ROWALLOC
 
 : welcomemsg
 S" Filo editor -- (c) Adrian McMenamin, 2024"
@@ -35,12 +36,9 @@ VARIABLE ROW-COUNT
   IF
     ROW-COUNT @ 1 DO
       I 1- RECORDGAP * ROW-RECORDS @ + INTRASPACE + @ 
-      DUP 0<>
-      IF
-        FREE
-      THEN
+      FREE
       0<>
-        ABORT" Memory failure in CLEANROWS word"
+        ABORT" Failure to clear buffer"
       I 1- RECORDGAP * ROW-RECORDS @ + INTRASPACE + INTRAGAP + @
       FREE
       0<>
@@ -84,16 +82,17 @@ THEN
 \ set the data at a given index
 : SET-ROW
   ( ptr* len index -- f )
-  >R R@ ROW-COUNT @ >
+  >R R@ ROW-COUNT @ >                                      \ index > row-count ?
   IF
-    2DROP
+    2DROP                                                  \ yes - bad call
     FALSE
   ELSE
-    R@ 1- RECORDGAP * ROW-RECORDS @ + >R
-    R@ !                                                   \ length
-    R@ INTRASPACE + !                                      \ ptr
-    0 R> INTRAGAP + >R R@ !                                \ render length 0
-    0 R> INTRAGAP + !                                      \ render ptr null
+    R@ 1- RECORDGAP * ROW-RECORDS @ + >R                   \ r-stack: index addr
+    R@ !                                                   \ write out length at addr
+    R@ INTRASPACE + !                                      \ write out ptr at addr+8
+    R> INTRAGAP + >R                                       \ now write out 0s for render buufer too
+    0 R@ !
+    0 R> INTRASPACE + !
     TRUE
   THEN                 
   RDROP
@@ -106,15 +105,20 @@ THEN
   (  -- )
   ROW-COUNT @ 0=
   IF
-    [ decimal 1024 ] literal ALLOCATE DROPERR
+    SIZE-OF-ROWALLOC @ ALLOCATE DROPERR
     ROW-RECORDS !
     1 ROW-COUNT !
     0 0 1 SET-ROW SETROW-ERR
   ELSE
-    ROW-RECORDS @
     ROW-COUNT @ 1+ RECORDGAP *
-    RESIZE CLEANROWS-ERR
-    ROW-RECORDS !
+    SIZE-OF-ROWALLOC @ >
+    IF
+      SIZE-OF-ROWALLOC @ 4096 + ALLOCATE DROPERR >R
+      ROW-RECORDS @ R@ SIZE-OF-ROWALLOC @ MOVE
+      ROW-RECORDS @ FREE DROPERR
+      R> ROW-RECORDS !
+      SIZE-OF-ROWALLOC @ 4096 + SIZE-OF-ROWALLOC !
+    THEN
     ROW-COUNT @ 1+ ROW-COUNT !
     0 0 ROW-COUNT @ SET-ROW SETROW-ERR
   THEN
@@ -154,7 +158,7 @@ THEN
   4 PICK 1-                                                         \ stack: rsize buff rbuff buff rbuff size
   MOVE                                                              \ stack: rsize buff rbuff
   R> 1- RECORDGAP * INTRAGAP + ROW-RECORDS @ +                      \ stack: rsize buff rbuff addr
-  [ hex 10 ] literal                                           \ stack: rsize buff rbuff addr \n
+  [ decimal 10 ] literal                                                \ stack: rsize buff rbuff addr \n
   2 PICK                                                            \ stack: rsize buff rbuff addr \n rbuff
   5 PICK 1- + C!                                                    \ stack: rsize buff rbuff addr
   3 PICK 1 PICK !                                                   \ store length
@@ -578,10 +582,10 @@ VARIABLE BUFFER_LEN
       MOVE                                              \ copy the line into the buffer
       R> R> ROW-COUNT @
       SET-ROW SETROW-ERR
-      ROW-COUNT @ EDITOR-UPDATE-ROW
     ELSE
       DROP
     THEN
+    ROW-COUNT @ EDITOR-UPDATE-ROW                       \ insert a render buffer - even a blank one if we have to
   REPEAT
   DROP
   LINEBUFFER @ FREE DROPERR
@@ -597,6 +601,7 @@ VARIABLE BUFFER_LEN
   0 ROW-RECORDS !
   0 ROW-COUNT !
   0 ROWOFF !
+  8192 SIZE-OF-ROWALLOC !
   GET-WINDOW-SIZE
   PARSE-NAME
   DUP 0<>
