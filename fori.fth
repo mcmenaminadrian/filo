@@ -120,8 +120,8 @@ THEN
       SIZE-OF-ROWALLOC @ 4096 + SIZE-OF-ROWALLOC !
     THEN
     ROW-COUNT @ 1+ ROW-COUNT !
-    0 0 ROW-COUNT @ SET-ROW SETROW-ERR
   THEN
+  0 0 ROW-COUNT @ SET-ROW SETROW-ERR
 ;
 
 \ get the data at a given index
@@ -137,6 +137,22 @@ THEN
   THEN
   RDROP
 ;
+
+\ get the render row at a given index
+: GET-RROW
+  ( u -- ptr* len )
+  >R R@ ROW-COUNT @ 1- >
+  IF
+    0 0         \ return nothing
+  ELSE
+    R@ 1- RECORDGAP * ROW-RECORDS @ +
+    INTRAGAP +
+    DUP
+    @ SWAP INTRASPACE + @ SWAP
+  THEN
+  RDROP
+;
+  
 
 \ create a render row
 : EDITOR-UPDATE-ROW
@@ -158,7 +174,7 @@ THEN
   4 PICK 1-                                                         \ stack: rsize buff rbuff buff rbuff size
   MOVE                                                              \ stack: rsize buff rbuff
   R> 1- RECORDGAP * INTRAGAP + ROW-RECORDS @ +                      \ stack: rsize buff rbuff addr
-  [ decimal 10 ] literal                                                \ stack: rsize buff rbuff addr \n
+  [ decimal 0 ] literal                                            \ stack: rsize buff rbuff addr \n
   2 PICK                                                            \ stack: rsize buff rbuff addr \n rbuff
   5 PICK 1- + C!                                                    \ stack: rsize buff rbuff addr
   3 PICK 1 PICK !                                                   \ store length
@@ -167,11 +183,9 @@ THEN
 ;
 
 
-
 \
 \ Utility words					      *
 \
-
 
 \ is character on stack CTRL Key for that letter
 : CTRL-KEY ( n c -- f )
@@ -312,7 +326,7 @@ VARIABLE BUFFER_LEN
         S" ~" ABAPPEND
       THEN
     ELSE
-      FILEROW @ GET-ROW ABAPPEND
+      FILEROW @ GET-RROW ABAPPEND
     THEN
     \ ESC[K - redraw line
     S\" \e[K" ABAPPEND
@@ -363,13 +377,13 @@ VARIABLE BUFFER_LEN
   EDITORSCROLL
   [ decimal 64 ] literal  ALLOCATE DROPERR BUFFER_PTR !
   0 BUFFER_LEN !
-  \ ESC [?25l - make cursor disappear
+  \ make cursor disappear
   S\" \e[?25l" ABAPPEND
-  \ ^[[1;1H - position at top of screen
+  \ position at top of screen
   S\" \e[1;1H" ABAPPEND
   EDITOR-DRAW-ROWS
   MOVE_CURSOR
-  \ ESC [?25h - cursor reappear
+  \ cursor reappear
   S\" \e[?25h" ABAPPEND
   PRINT_BUFFER
   ABFREE
@@ -585,7 +599,7 @@ VARIABLE BUFFER_LEN
     ELSE
       DROP
     THEN
-    ROW-COUNT @ EDITOR-UPDATE-ROW                       \ insert a render buffer - even a blank one if we have to
+    ROW-COUNT @ NOP EDITOR-UPDATE-ROW                       \ insert a render buffer - even a blank one if we have to
   REPEAT
   DROP
   LINEBUFFER @ FREE DROPERR
