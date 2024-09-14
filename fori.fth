@@ -15,6 +15,7 @@ DECIMAL 16 CONSTANT INTRAGAP
 DECIMAL 8 CONSTANT INTRASPACE
 DECIMAL 32 CONSTANT RECORDGAP
 DECIMAL 512 CONSTANT LINESIZE
+DECIMAL 4 CONSTANT TAB-EXPANSION
 VARIABLE LINEBUFFER
 VARIABLE TEMP
 VARIABLE SIZE-OF-ROWALLOC
@@ -152,7 +153,59 @@ THEN
   THEN
   RDROP
 ;
-  
+
+\ count the number of tab characters in a row
+: COUNT-TABS
+  ( index -- count)
+  0 >R                                                              \ set tab counter to zero
+  GET-ROW                                                           \ get the *ptr len
+  DUP 0<>
+  IF
+    0 SWAP                                                          \ stack now *ptr len 0
+    DO
+      DUP                                                           \ stack now *ptr *ptr
+      I + C@                                                        \ stack now *ptr char
+      [ decimal 9 ] literal =                                       \ test for \t
+      IF
+        R> 1+ >R
+      THEN
+    LOOP
+  ELSE
+    DROP
+  THEN
+  DROP
+  R>
+;
+
+: TRANSFER-RBUFF
+  \ copy buffer with expansions
+  ( buff rbuff size -- )
+  DUP 0<>
+  IF
+    0 >R                                                            \ how many expansions added
+    0 DO
+      1 PICK                                                        \ stack: buff rbuff buff
+      I + C@                                                        \ stack: buff rbuff char
+      DUP                                                           \ stack: buff rbuff char char
+      [ decimal 9 ] literal =                                       \ stack: buff rbuff char bool
+      IF
+        TAB-EXPANSION 0
+        DO
+          [ decimal 32 ] literal                                    \ stack: buff rbuff char spc
+          2 PICK J + R@ + I + C!
+          R> 1+ >R
+        LOOP
+        DROP
+      ELSE                                                          \ stack: buff rbuff char
+        1 PICK R@ + I + C!
+      THEN
+    LOOP
+    RDROP
+  ELSE
+    DROP
+  THEN
+  2DROP
+;
 
 \ create a render row
 : EDITOR-UPDATE-ROW
@@ -166,15 +219,18 @@ THEN
   ELSE
     DROP
   THEN
-  R@ 1- RECORDGAP * ROW-RECORDS @ + @ 1+ DUP                        \ stack: rsize rsize
+  R@ COUNT-TABS                                                     \ stack: tab-count
+  TAB-EXPANSION *                                                   \ stack: tab-expansion-total
+  R@ 1- RECORDGAP * ROW-RECORDS @ + @ DUP                           \ stack: tab-expnsion-total size
+  + 1+ DUP                                                          \ stack: rsize rsize
   ALLOCATE DROPERR                                                  \ stack: rsize rbuff
   R@ 1- RECORDGAP * INTRASPACE + ROW-RECORDS @ + @                  \ stack: rsize rbuff buff
   SWAP                                                              \ stack: rsize buff rbuff
   2DUP                                                              \ stack: rsize buff rbuff buff rbuff
   4 PICK 1-                                                         \ stack: rsize buff rbuff buff rbuff size
-  MOVE                                                              \ stack: rsize buff rbuff
+  TRANSFER-RBUFF                                                    \ stack: rsize buff rbuff
   R> 1- RECORDGAP * INTRAGAP + ROW-RECORDS @ +                      \ stack: rsize buff rbuff addr
-  [ decimal 0 ] literal                                            \ stack: rsize buff rbuff addr \n
+  [ decimal 0 ] literal                                             \ stack: rsize buff rbuff addr \n
   2 PICK                                                            \ stack: rsize buff rbuff addr \n rbuff
   5 PICK 1- + C!                                                    \ stack: rsize buff rbuff addr
   3 PICK 1 PICK !                                                   \ store length
@@ -599,7 +655,7 @@ VARIABLE BUFFER_LEN
     ELSE
       DROP
     THEN
-    ROW-COUNT @ NOP EDITOR-UPDATE-ROW                       \ insert a render buffer - even a blank one if we have to
+    ROW-COUNT @ EDITOR-UPDATE-ROW                       \ insert a render buffer - even a blank one if we have to
   REPEAT
   DROP
   LINEBUFFER @ FREE DROPERR
