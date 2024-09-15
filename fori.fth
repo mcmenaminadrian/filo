@@ -11,11 +11,14 @@ HEX 5413 CONSTANT TIOCGWINSZ
 DECIMAL 0 CONSTANT STDIN
 DECIMAL 1 CONSTANT STDOUT
 DECIMAL 2 CONSTANT STDERR
-DECIMAL 16 CONSTANT SIXTEEN
-DECIMAL 8 CONSTANT EIGHT
+DECIMAL 16 CONSTANT INTRAGAP
+DECIMAL 8 CONSTANT INTRASPACE
+DECIMAL 32 CONSTANT RECORDGAP
 DECIMAL 512 CONSTANT LINESIZE
+DECIMAL 4 CONSTANT TAB-EXPANSION
 VARIABLE LINEBUFFER
 VARIABLE TEMP
+VARIABLE SIZE-OF-ROWALLOC
 
 : welcomemsg
 S" Filo editor -- (c) Adrian McMenamin, 2024"
@@ -29,16 +32,18 @@ VARIABLE ROW-COUNT
 \ free everything
 : CLEANROWS
 ( -- )
+  ." Clean up" CR
   ROW-COUNT @ 0<>
   IF
     ROW-COUNT @ 1 DO
-      I 1- SIXTEEN * ROW-RECORDS @ + EIGHT + @ 
-      DUP 0<>
-      IF
-        FREE
-      THEN
+      I 1- RECORDGAP * ROW-RECORDS @ + INTRASPACE + @ 
+      FREE
       0<>
-        ABORT" Memory failure in CLEANROWS word"
+        ABORT" Failure to clear buffer"
+      I 1- RECORDGAP * ROW-RECORDS @ + INTRASPACE + INTRAGAP + @
+      FREE
+      0<>
+        ABORT" Failure to clear render buffer"
     LOOP
     0 ROW-COUNT !
   THEN
@@ -78,14 +83,17 @@ THEN
 \ set the data at a given index
 : SET-ROW
   ( ptr* len index -- f )
-  >R R@ ROW-COUNT @ >
+  >R R@ ROW-COUNT @ >                                      \ index > row-count ?
   IF
-    2DROP
+    2DROP                                                  \ yes - bad call
     FALSE
   ELSE
-    R@ 1- SIXTEEN * ROW-RECORDS @ + >R
-    R@ !                                                   \ length
-    R> EIGHT + !                                           \ ptr
+    R@ 1- RECORDGAP * ROW-RECORDS @ + >R                   \ r-stack: index addr
+    R@ !                                                   \ write out length at addr
+    R@ INTRASPACE + !                                      \ write out ptr at addr+8
+    R> INTRAGAP + >R                                       \ now write out 0s for render buufer too
+    0 R@ !
+    0 R> INTRASPACE + !
     TRUE
   THEN                 
   RDROP
@@ -98,18 +106,23 @@ THEN
   (  -- )
   ROW-COUNT @ 0=
   IF
-    [ decimal 1024 ] literal ALLOCATE DROPERR
+    SIZE-OF-ROWALLOC @ ALLOCATE DROPERR
     ROW-RECORDS !
     1 ROW-COUNT !
     0 0 1 SET-ROW SETROW-ERR
   ELSE
-    ROW-RECORDS @
-    ROW-COUNT @ 1+ SIXTEEN *
-    RESIZE CLEANROWS-ERR
-    ROW-RECORDS !
+    ROW-COUNT @ 1+ RECORDGAP *
+    SIZE-OF-ROWALLOC @ >
+    IF
+      SIZE-OF-ROWALLOC @ 4096 + ALLOCATE DROPERR >R
+      ROW-RECORDS @ R@ SIZE-OF-ROWALLOC @ MOVE
+      ROW-RECORDS @ FREE DROPERR
+      R> ROW-RECORDS !
+      SIZE-OF-ROWALLOC @ 4096 + SIZE-OF-ROWALLOC !
+    THEN
     ROW-COUNT @ 1+ ROW-COUNT !
-    0 0 ROW-COUNT @ SET-ROW SETROW-ERR
   THEN
+  0 0 ROW-COUNT @ SET-ROW SETROW-ERR
 ;
 
 \ get the data at a given index
@@ -119,18 +132,116 @@ THEN
   IF
     0 0         \ return nothing
   ELSE
-    R@ 1- SIXTEEN * ROW-RECORDS @ +
+    R@ 1- RECORDGAP * ROW-RECORDS @ +
     DUP
-    @ SWAP EIGHT + @ SWAP
+    @ SWAP INTRASPACE + @ SWAP
   THEN
   RDROP
+;
+
+\ get the render row at a given index
+: GET-RROW
+  ( u -- ptr* len )
+  >R R@ ROW-COUNT @ 1- >
+  IF
+    0 0         \ return nothing
+  ELSE
+    R@ 1- RECORDGAP * ROW-RECORDS @ +
+    INTRAGAP +
+    DUP
+    @ SWAP INTRASPACE + @ SWAP
+  THEN
+  RDROP
+;
+
+\ count the number of tab characters in a row
+: COUNT-TABS
+  ( index -- count)
+  0 >R                                                              \ set tab counter to zero
+  GET-ROW                                                           \ get the *ptr len
+  DUP 0<>
+  IF
+    0 SWAP                                                          \ stack now *ptr len 0
+    DO
+      DUP                                                           \ stack now *ptr *ptr
+      I + C@                                                        \ stack now *ptr char
+      [ decimal 9 ] literal =                                       \ test for \t
+      IF
+        R> 1+ >R
+      THEN
+    LOOP
+  ELSE
+    DROP
+  THEN
+  DROP
+  R>
+;
+
+: TRANSFER-RBUFF
+  \ copy buffer with expansions
+  ( buff rbuff size -- )
+  DUP 0<>
+  IF
+    0 >R                                                            \ how many expansions added
+    0 DO
+      1 PICK                                                        \ stack: buff rbuff buff
+      I + C@                                                        \ stack: buff rbuff char
+      DUP                                                           \ stack: buff rbuff char char
+      [ decimal 9 ] literal =                                       \ stack: buff rbuff char bool
+      IF
+        TAB-EXPANSION 0
+        DO
+          [ decimal 32 ] literal                                    \ stack: buff rbuff char spc
+          2 PICK J + R@ + I + C!
+          R> 1+ >R
+        LOOP
+        DROP
+      ELSE                                                          \ stack: buff rbuff char
+        1 PICK R@ + I + C!
+      THEN
+    LOOP
+    RDROP
+  ELSE
+    DROP
+  THEN
+  2DROP
+;
+
+\ create a render row
+: EDITOR-UPDATE-ROW
+  ( index -- )
+  >R                                                                \ save index
+  R@ 1- RECORDGAP * INTRASPACE + INTRAGAP + ROW-RECORDS @ + @       \ fetch render pointer
+  DUP                                                               \ duplicate
+  0<>                                                               \ test not zero
+  IF
+    FREE                                                            \ if not zero, free
+  ELSE
+    DROP
+  THEN
+  R@ COUNT-TABS                                                     \ stack: tab-count
+  TAB-EXPANSION *                                                   \ stack: tab-expansion-total
+  R@ 1- RECORDGAP * ROW-RECORDS @ + @ DUP                           \ stack: tab-expnsion-total size
+  + 1+ DUP                                                          \ stack: rsize rsize
+  ALLOCATE DROPERR                                                  \ stack: rsize rbuff
+  R@ 1- RECORDGAP * INTRASPACE + ROW-RECORDS @ + @                  \ stack: rsize rbuff buff
+  SWAP                                                              \ stack: rsize buff rbuff
+  2DUP                                                              \ stack: rsize buff rbuff buff rbuff
+  4 PICK 1-                                                         \ stack: rsize buff rbuff buff rbuff size
+  TRANSFER-RBUFF                                                    \ stack: rsize buff rbuff
+  R> 1- RECORDGAP * INTRAGAP + ROW-RECORDS @ +                      \ stack: rsize buff rbuff addr
+  [ decimal 0 ] literal                                             \ stack: rsize buff rbuff addr \n
+  2 PICK                                                            \ stack: rsize buff rbuff addr \n rbuff
+  5 PICK 1- + C!                                                    \ stack: rsize buff rbuff addr
+  3 PICK 1 PICK !                                                   \ store length
+  1 PICK 1 PICK INTRASPACE + !                                      \ store rbuff
+  2DROP 2DROP                                                       \ clear stack
 ;
 
 
 \
 \ Utility words					      *
 \
-
 
 \ is character on stack CTRL Key for that letter
 : CTRL-KEY ( n c -- f )
@@ -159,7 +270,7 @@ THEN
 
 : GET-WINDOW-SIZE
   ( -- )
-  SIXTEEN ALLOCATE DROPERR
+  16 ALLOCATE DROPERR
   >R
   STDOUT TIOCGWINSZ R@ IOCTL
   0=
@@ -271,7 +382,7 @@ VARIABLE BUFFER_LEN
         S" ~" ABAPPEND
       THEN
     ELSE
-      FILEROW @ GET-ROW ABAPPEND
+      FILEROW @ GET-RROW ABAPPEND
     THEN
     \ ESC[K - redraw line
     S\" \e[K" ABAPPEND
@@ -322,13 +433,13 @@ VARIABLE BUFFER_LEN
   EDITORSCROLL
   [ decimal 64 ] literal  ALLOCATE DROPERR BUFFER_PTR !
   0 BUFFER_LEN !
-  \ ESC [?25l - make cursor disappear
+  \ make cursor disappear
   S\" \e[?25l" ABAPPEND
-  \ ^[[1;1H - position at top of screen
+  \ position at top of screen
   S\" \e[1;1H" ABAPPEND
   EDITOR-DRAW-ROWS
   MOVE_CURSOR
-  \ ESC [?25h - cursor reappear
+  \ cursor reappear
   S\" \e[?25h" ABAPPEND
   PRINT_BUFFER
   ABFREE
@@ -544,6 +655,7 @@ VARIABLE BUFFER_LEN
     ELSE
       DROP
     THEN
+    ROW-COUNT @ EDITOR-UPDATE-ROW                       \ insert a render buffer - even a blank one if we have to
   REPEAT
   DROP
   LINEBUFFER @ FREE DROPERR
@@ -559,6 +671,7 @@ VARIABLE BUFFER_LEN
   0 ROW-RECORDS !
   0 ROW-COUNT !
   0 ROWOFF !
+  8192 SIZE-OF-ROWALLOC !
   GET-WINDOW-SIZE
   PARSE-NAME
   DUP 0<>
