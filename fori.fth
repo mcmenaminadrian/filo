@@ -193,7 +193,9 @@ THEN
         DO
           [ decimal 32 ] literal                                    \ stack: buff rbuff char spc
           2 PICK J + R@ + I + C!
-          R> 1+ >R
+          J 0<> IF
+            R> 1+ >R
+          THEN
         LOOP
         DROP
       ELSE                                                          \ stack: buff rbuff char
