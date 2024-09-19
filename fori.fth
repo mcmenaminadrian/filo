@@ -4,6 +4,7 @@
 VARIABLE ROWS
 VARIABLE COLUMNS
 VARIABLE CX
+VARIABLE RX
 VARIABLE CY
 VARIABLE ROWOFF
 VARIABLE FILEROW
@@ -15,7 +16,8 @@ DECIMAL 16 CONSTANT INTRAGAP
 DECIMAL 8 CONSTANT INTRASPACE
 DECIMAL 32 CONSTANT RECORDGAP
 DECIMAL 512 CONSTANT LINESIZE
-DECIMAL 4 CONSTANT TAB-EXPANSION
+DECIMAL 8 CONSTANT TAB-EXPANSION
+DECIMAL 9 CONSTANT TAB-CHAR
 VARIABLE LINEBUFFER
 VARIABLE TEMP
 VARIABLE SIZE-OF-ROWALLOC
@@ -100,13 +102,12 @@ THEN
 ;
  
 
-
 \ for each row hold a counter for row length and a pointer to a line
 : ADD-ROW
   (  -- )
   ROW-COUNT @ 0=
   IF
-    SIZE-OF-ROWALLOC @ ALLOCATE DROPERR
+    SIZE-OF-ROWALLOC @ ZALLOCATE DROPERR
     ROW-RECORDS !
     1 ROW-COUNT !
     0 0 1 SET-ROW SETROW-ERR
@@ -114,7 +115,7 @@ THEN
     ROW-COUNT @ 1+ RECORDGAP *
     SIZE-OF-ROWALLOC @ >
     IF
-      SIZE-OF-ROWALLOC @ 4096 + ALLOCATE DROPERR >R
+      SIZE-OF-ROWALLOC @ 4096 + ZALLOCATE DROPERR >R
       ROW-RECORDS @ R@ SIZE-OF-ROWALLOC @ MOVE
       ROW-RECORDS @ FREE DROPERR
       R> ROW-RECORDS !
@@ -165,7 +166,7 @@ THEN
     DO
       DUP                                                           \ stack now *ptr *ptr
       I + C@                                                        \ stack now *ptr char
-      [ decimal 9 ] literal =                                       \ test for \t
+      TAB-CHAR =                                                    \ test for \t
       IF
         R> 1+ >R
       THEN
@@ -177,9 +178,18 @@ THEN
   R>
 ;
 
+: ZRBUFF   \ zero out the rbuffer
+  ( rbuff size exp -- rbuff)
+  +
+  1 PICK                                                            \ stack: rbuff size+exp rbuff
+  +
+  0 SWAP C!
+;
+
 : TRANSFER-RBUFF
   \ copy buffer with expansions
   ( buff rbuff size -- )
+  DUP >R                                                            \ save size
   DUP 0<>
   IF
     0 >R                                                            \ how many expansions added
@@ -187,23 +197,27 @@ THEN
       1 PICK                                                        \ stack: buff rbuff buff
       I + C@                                                        \ stack: buff rbuff char
       DUP                                                           \ stack: buff rbuff char char
-      [ decimal 9 ] literal =                                       \ stack: buff rbuff char bool
+      TAB-CHAR =                                                    \ stack: buff rbuff char bool
       IF
-        TAB-EXPANSION 0
+        R@ I + TAB-EXPANSION MOD                                    \ how close to tab stop?
+        TAB-EXPANSION SWAP - 0
         DO
           [ decimal 32 ] literal                                    \ stack: buff rbuff char spc
           2 PICK J + R@ + I + C!
-          J 0<> IF
-            R> 1+ >R
-          THEN
         LOOP
+        TAB-EXPANSION
+        R@ I + TAB-EXPANSION MOD
+        - 1-
+        R> + >R
         DROP
       ELSE                                                          \ stack: buff rbuff char
         1 PICK R@ + I + C!
       THEN
     LOOP
-    RDROP
+    2R>                                                             \ stack: buff rbuff size exp
+    ZRBUFF
   ELSE
+    RDROP
     DROP
   THEN
   2DROP
@@ -222,19 +236,16 @@ THEN
     DROP
   THEN
   R@ COUNT-TABS                                                     \ stack: tab-count
-  TAB-EXPANSION *                                                   \ stack: tab-expansion-total
+  TAB-EXPANSION 1- *                                                \ stack: tab-expansion-total
   R@ 1- RECORDGAP * ROW-RECORDS @ + @ DUP                           \ stack: tab-expnsion-total size
   + 1+ DUP                                                          \ stack: rsize rsize
-  ALLOCATE DROPERR                                                  \ stack: rsize rbuff
+  ZALLOCATE DROPERR                                                  \ stack: rsize rbuff
   R@ 1- RECORDGAP * INTRASPACE + ROW-RECORDS @ + @                  \ stack: rsize rbuff buff
   SWAP                                                              \ stack: rsize buff rbuff
   2DUP                                                              \ stack: rsize buff rbuff buff rbuff
   4 PICK 1-                                                         \ stack: rsize buff rbuff buff rbuff size
   TRANSFER-RBUFF                                                    \ stack: rsize buff rbuff
   R> 1- RECORDGAP * INTRAGAP + ROW-RECORDS @ +                      \ stack: rsize buff rbuff addr
-  [ decimal 0 ] literal                                             \ stack: rsize buff rbuff addr \n
-  2 PICK                                                            \ stack: rsize buff rbuff addr \n rbuff
-  5 PICK 1- + C!                                                    \ stack: rsize buff rbuff addr
   3 PICK 1 PICK !                                                   \ store length
   1 PICK 1 PICK INTRASPACE + !                                      \ store rbuff
   2DROP 2DROP                                                       \ clear stack
@@ -350,8 +361,26 @@ VARIABLE BUFFER_LEN
   R> FREE DROPERR
 ;
 
+: SET-RX
+  ( index -- )        \ set RX for this line
+  0 RX !
+  ROWOFF @ + 1+
+  GET-ROW             \ get underlying row - stack *ptr len
+  0<> IF
+    CX @ 0 DO
+      DUP I + C@      \ get character
+      TAB-CHAR =
+      IF
+        RX @ TAB-EXPANSION 1- + RX !
+      THEN
+    LOOP
+    RX @ CX @ + RX !
+  THEN 
+  DROP
+;
+ 
 : EDITORSCROLL
-  ( -- )  
+  ( -- )
   CY @ ROWS @ >
   IF
     ROWOFF @ ROW-COUNT @ <
@@ -369,6 +398,7 @@ VARIABLE BUFFER_LEN
       0 CY !
     THEN
   THEN
+  SET-RX
 ; 
 
 : EDITOR-DRAW-ROWS
@@ -426,14 +456,14 @@ VARIABLE BUFFER_LEN
   S\" \e[" ABAPPEND                                          \ first part of escape sequence
   CY @ 1+ >STRING COUNT ABAPPEND                             \ add y
   S" ;" ABAPPEND
-  CX @ 1+ >STRING COUNT ABAPPEND                             \ add x
+  RX @ 1+ >STRING COUNT ABAPPEND                             \ add x
   S" H" ABAPPEND
 ;
 
 : EDITOR-REFRESH-SCREEN
   ( -- )
   EDITORSCROLL
-  [ decimal 64 ] literal  ALLOCATE DROPERR BUFFER_PTR !
+  [ decimal 64 ] literal  ZALLOCATE DROPERR BUFFER_PTR !
   0 BUFFER_LEN !
   \ make cursor disappear
   S\" \e[?25l" ABAPPEND
@@ -455,13 +485,12 @@ VARIABLE BUFFER_LEN
 : HOMEKEY
   ( -- )
   0 CX !
-  0 CY !
 ;
 
 : ENDKEY
   ( -- )
-  0 CX !
-  ROWS @ CY !
+  CY @ LINE-LENGTH
+  CX !
 ;
 
 : CHECKTILDE
@@ -631,16 +660,24 @@ VARIABLE BUFFER_LEN
 \
 \ file io
 \
+: BUFFERNULL
+  ( addr len -- addr len)
+  2DUP
+  +
+  10 SWAP C!
+;
+
+
 : EDITOROPEN
   ( c-addr u  -- )
-  S\" r\0" DROP OPEN-FILE
+  S\" r\0" DROP OPEN-FILE                               \ stack: fileid ior
   0<> IF
     DROP
     ." Halting: Failed to open file" CR
     ABORT
   THEN
-  >R
-  LINESIZE ALLOCATE DROPERR LINEBUFFER !
+  >R                                                     \ fileid on to R stack
+  LINESIZE ZALLOCATE DROPERR LINEBUFFER !
   BEGIN
     LINEBUFFER @ LINESIZE R@ READ-LINE
     0= AND
@@ -648,9 +685,10 @@ VARIABLE BUFFER_LEN
     ADD-ROW
     DUP 0<>
     IF
-      DUP DUP >R ALLOCATE DROPERR >R                    \ allocate a buffer same size as the line  r-stack: handle, len, addr
+      DUP DUP >R 1+ ZALLOCATE DROPERR >R                \ allocate a buffer same size as the line  r-stack: handle, len, addr
       R@ LINEBUFFER @                                   \ stack:  len, addr, linebuffer
       SWAP ROT                                          \ stack: linebuffer, addr, len
+      BUFFERNULL
       MOVE                                              \ copy the line into the buffer
       R> R> ROW-COUNT @
       SET-ROW SETROW-ERR
@@ -669,6 +707,7 @@ VARIABLE BUFFER_LEN
 \
 : fori ( -- n )
   0 CX !
+  0 RX !
   0 CY !
   0 ROW-RECORDS !
   0 ROW-COUNT !
