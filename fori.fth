@@ -178,18 +178,9 @@ THEN
   R>
 ;
 
-: ZRBUFF   \ zero out the rbuffer
-  ( rbuff size exp -- rbuff)
-  +
-  1 PICK                                                            \ stack: rbuff size+exp rbuff
-  +
-  0 SWAP C!
-;
-
 : TRANSFER-RBUFF
   \ copy buffer with expansions
   ( buff rbuff size -- )
-  DUP >R                                                            \ save size
   DUP 0<>
   IF
     0 >R                                                            \ how many expansions added
@@ -214,11 +205,7 @@ THEN
         1 PICK R@ + I + C!
       THEN
     LOOP
-    2R>                                                             \ stack: buff rbuff size exp
-    ZRBUFF
-  ELSE
     RDROP
-    DROP
   THEN
   2DROP
 ;
@@ -660,14 +647,6 @@ VARIABLE BUFFER_LEN
 \
 \ file io
 \
-: BUFFERNULL
-  ( addr len -- addr len)
-  2DUP
-  +
-  10 SWAP C!
-;
-
-
 : EDITOROPEN
   ( c-addr u  -- )
   S\" r\0" DROP OPEN-FILE                               \ stack: fileid ior
@@ -688,7 +667,6 @@ VARIABLE BUFFER_LEN
       DUP DUP >R 1+ ZALLOCATE DROPERR >R                \ allocate a buffer same size as the line  r-stack: handle, len, addr
       R@ LINEBUFFER @                                   \ stack:  len, addr, linebuffer
       SWAP ROT                                          \ stack: linebuffer, addr, len
-      BUFFERNULL
       MOVE                                              \ copy the line into the buffer
       R> R> ROW-COUNT @
       SET-ROW SETROW-ERR
