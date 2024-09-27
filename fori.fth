@@ -206,9 +206,21 @@ THEN
       THEN
     LOOP
     RDROP
+  ELSE
+    DROP
   THEN
   2DROP
 ;
+
+\ get the size of an unexpanded row
+: GET-ROW-SIZE
+  ( index -- size)
+  1- RECORDGAP *                                                    \ stack: offset
+  ROW-RECORDS @                                                     \ stack: offset *rows
+  +                                                                 \ stack: *indexed-row
+  @                                                                 \ stack: size
+;
+
 
 \ create a render row
 : EDITOR-UPDATE-ROW
@@ -224,13 +236,13 @@ THEN
   THEN
   R@ COUNT-TABS                                                     \ stack: tab-count
   TAB-EXPANSION 1- *                                                \ stack: tab-expansion-total
-  R@ 1- RECORDGAP * ROW-RECORDS @ + @ DUP                           \ stack: tab-expnsion-total size
+  R@ GET-ROW-SIZE                                                   \ stack: tab-expnsion-total size
   + 1+ DUP                                                          \ stack: rsize rsize
-  ZALLOCATE DROPERR                                                  \ stack: rsize rbuff
+  ZALLOCATE DROPERR                                                 \ stack: rsize rbuff
   R@ 1- RECORDGAP * INTRASPACE + ROW-RECORDS @ + @                  \ stack: rsize rbuff buff
   SWAP                                                              \ stack: rsize buff rbuff
   2DUP                                                              \ stack: rsize buff rbuff buff rbuff
-  4 PICK 1-                                                         \ stack: rsize buff rbuff buff rbuff size
+  R@ GET-ROW-SIZE                                                   \ stack: rsize buff rbuff buff rbuff size
   TRANSFER-RBUFF                                                    \ stack: rsize buff rbuff
   R> 1- RECORDGAP * INTRAGAP + ROW-RECORDS @ +                      \ stack: rsize buff rbuff addr
   3 PICK 1 PICK !                                                   \ store length
@@ -246,7 +258,8 @@ THEN
 \ is character on stack CTRL Key for that letter
 : CTRL-KEY ( n c -- f )
   [ HEX 1F DECIMAL ] LITERAL AND
-  = IF TRUE ELSE FALSE THEN ;
+  =
+;
 
 
 : ISCNTRL ( c -- f)
@@ -288,7 +301,7 @@ THEN
 ;
 
 : EDITOR-READ-KEY
-  ( -- c *scratchpad)
+  ( -- *scratchpad c )
   KEYRAW
 ;
 
@@ -349,23 +362,29 @@ VARIABLE BUFFER_LEN
 ;
 
 : SET-RX
-  ( index -- )        \ set RX for this line
-  0 RX !
-  ROWOFF @ + 1+
-  GET-ROW             \ get underlying row - stack *ptr len
-  0<> IF
-    CX @ 0 DO
-      DUP I + C@      \ get character
-      TAB-CHAR =
+  ( index -- )                          \ set RX for this line
+  0 RX !                                \ stack: index
+  ROWOFF @ + 1+                         \ stack: row
+  GET-ROW                               \ stack: buff len
+  0<>                                   \ stack: buff bool
+  IF
+    CX @ 0 DO                           \ stack: buff
+      DUP I + C@                        \ stack: buff char
+      TAB-CHAR =                        \ stack: buff bool
       IF
-        RX @ TAB-EXPANSION 1- + RX !
+        RX @ TAB-EXPANSION MOD          \ stack: buff modulo
+        TAB-EXPANSION SWAP -            \ stack: buff to-next-tabstop
+        RX @ + RX !                     \ stack: buff
+      ELSE
+        RX @ 1+ RX !                    \ stack: buff
       THEN
     LOOP
-    RX @ CX @ + RX !
-  THEN 
+  THEN
   DROP
 ;
- 
+
+          
+
 : EDITORSCROLL
   ( -- )
   CY @ ROWS @ >
@@ -385,7 +404,7 @@ VARIABLE BUFFER_LEN
       0 CY !
     THEN
   THEN
-  SET-RX
+  CY @ SET-RX
 ; 
 
 : EDITOR-DRAW-ROWS
@@ -484,15 +503,10 @@ VARIABLE BUFFER_LEN
   ( *char -- bool)
   3 + C@
   CHAR ~ =
-  IF
-    TRUE
-  ELSE
-    FALSE
-  THEN
 ;
     
 : HANDLE-O-CASES
-  ( *addr -- )
+  ( *addr --   )
   >R
   R@ 1+ C@
   CHAR O =                                \ handle ^[OH and ^[OF cases
@@ -505,14 +519,14 @@ VARIABLE BUFFER_LEN
       CHAR F OF
         ENDKEY
       ENDOF
-      DUP OF ENDOF
+      DUP OF DROP ENDOF
     ENDCASE
   THEN
   RDROP
 ;  
 
 : HANDLE-BRACKET-CASES
-  ( *addr -- )
+  ( *addr --   )
   >R
   R@ 2+ C@                                 \ get next + 1 character
   CASE
@@ -538,7 +552,6 @@ VARIABLE BUFFER_LEN
       IF
         1+ CX !
       ELSE
-        DROP
         0 CX !
         CY @ 1+ CY !
       THEN
@@ -549,7 +562,6 @@ VARIABLE BUFFER_LEN
       IF
         1- CX !                          \ move left if not already at edge
       ELSE
-        DROP
         CY @ 1- CY !
         COLUMNS @ CX !                   \ force to end of line
         ADJUST-FOR-LENGTH
@@ -607,7 +619,7 @@ VARIABLE BUFFER_LEN
         NOP                                 \ delete key - to be implemented
       THEN
     ENDOF
-    DUP OF ENDOF                          \ default
+    DUP OF DROP ENDOF                          \ default
   ENDCASE
   RDROP
 ;
@@ -626,7 +638,7 @@ VARIABLE BUFFER_LEN
       
 : EDITOR-PROCESS-KEYPRESS
   ( --  )
-  EDITOR-READ-KEY
+  EDITOR-READ-KEY                                        \ stack: *ptr, char
   CASE
     CHAR Q [ HEX 1F ] LITERAL AND  OF
       2DROP
@@ -635,12 +647,11 @@ VARIABLE BUFFER_LEN
       ." Leaving FILO " CR
       ABORT
     ENDOF
-    CASE
-      [ decimal 27 ] literal  OF
-        SWAP
-        PROCESS-ESCAPED-KEY
+    [ decimal 27 ] literal  OF
+      SWAP
+      PROCESS-ESCAPED-KEY
     ENDOF
-    DUP OF DROP ENDOF                    \ default
+    DUP OF 2DROP ENDOF                    \ default
   ENDCASE
 ;
 
