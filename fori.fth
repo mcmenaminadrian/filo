@@ -160,9 +160,9 @@ THEN
   ( index -- count)
   0 >R                                                              \ set tab counter to zero
   GET-ROW                                                           \ get the *ptr len
-  DUP 0<>
+  DUP 0<>                                                           \ stack: *ptr len bool
   IF
-    0 SWAP                                                          \ stack now *ptr len 0
+    0                                                               \ stack now *ptr len 0
     DO
       DUP                                                           \ stack now *ptr *ptr
       I + C@                                                        \ stack now *ptr char
@@ -191,15 +191,12 @@ THEN
       TAB-CHAR =                                                    \ stack: buff rbuff char bool
       IF
         R@ I + TAB-EXPANSION MOD                                    \ how close to tab stop?
-        TAB-EXPANSION SWAP - 0
-        DO
-          [ decimal 32 ] literal                                    \ stack: buff rbuff char spc
-          2 PICK J + R@ + I + C!
+        TAB-EXPANSION SWAP -  DUP                                      \ stack: buff rbuff char exp exp
+        0 DO                                                        \ stack: buff rbuff char exp
+          [ decimal 32 ] literal                                    \ stack: buff rbuff char exp spc
+          3 PICK J + R@ + I + C!                                    \ stack: buff rbuff char exp
         LOOP
-        TAB-EXPANSION
-        R@ I + TAB-EXPANSION MOD
-        - 1-
-        R> + >R
+        R> + 1- >R
         DROP
       ELSE                                                          \ stack: buff rbuff char
         1 PICK R@ + I + C!
@@ -547,9 +544,11 @@ VARIABLE BUFFER_LEN
       ADJUST-FOR-LENGTH
     ENDOF
     CHAR C OF                             \ arrow right
-      CX @ DUP
-      CY @ LINE-LENGTH <>                 \ not at right hand edge
+      CX @ 
+      CY @ LINE-LENGTH
+      <>                                  \ not at right hand edge
       IF
+        CX @
         1+ CX !
       ELSE
         0 CX !
@@ -562,6 +561,7 @@ VARIABLE BUFFER_LEN
       IF
         1- CX !                          \ move left if not already at edge
       ELSE
+        DROP
         CY @ 1- CY !
         COLUMNS @ CX !                   \ force to end of line
         ADJUST-FOR-LENGTH
