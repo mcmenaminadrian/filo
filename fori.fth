@@ -129,7 +129,7 @@ THEN
 \ get the data at a given index
 : GET-ROW
   ( u -- ptr* len )
-  >R R@ ROW-COUNT @ 1- >
+  >R R@ ROW-COUNT @ >
   IF
     0 0         \ return nothing
   ELSE
