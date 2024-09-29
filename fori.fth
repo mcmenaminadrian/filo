@@ -7,6 +7,7 @@ VARIABLE CX
 VARIABLE RX
 VARIABLE CY
 VARIABLE ROWOFF
+VARIABLE COLOFF
 VARIABLE FILEROW
 HEX 5413 CONSTANT TIOCGWINSZ
 DECIMAL 0 CONSTANT STDIN
@@ -21,13 +22,13 @@ DECIMAL 9 CONSTANT TAB-CHAR
 VARIABLE LINEBUFFER
 VARIABLE TEMP
 VARIABLE SIZE-OF-ROWALLOC
+VARIABLE ROW-RECORDS
+VARIABLE ROW-COUNT
 
 : welcomemsg
 S" Filo editor -- (c) Adrian McMenamin, 2024"
 ;
 
-VARIABLE ROW-RECORDS
-VARIABLE ROW-COUNT
 
 
 
@@ -417,7 +418,25 @@ VARIABLE BUFFER_LEN
         S" ~" ABAPPEND
       THEN
     ELSE
-      FILEROW @ GET-RROW ABAPPEND
+      FILEROW @ GET-RROW                      \ stack: *ptr len
+      COLOFF @ -                              \ shorten len: len - coloff = slen
+      DUP                                     \ stack: *ptr slen slen
+      0<                                      \ stack: *ptr slen bool
+      IF
+        DROP
+        0
+      THEN
+      SWAP
+      COLOFF @ +                              \ stack: slen *(ptr + coloff) = *sptr
+      SWAP                                    \ stack: *sptr slen
+      DUP                                     \ stack: *sptr slen slen
+      COLUMNS @                               \ stack: *sptr slen slen cols
+      >                                       \ stack: *sptr slen bool
+      IF
+        DROP
+        COLUMNS @
+      THEN
+      ABAPPEND
     THEN
     \ ESC[K - redraw line
     S\" \e[K" ABAPPEND
@@ -441,16 +460,45 @@ VARIABLE BUFFER_LEN
   DROP
 ;
 
+
+: RIGHT-LEN
+  ( -- )
+  CX @ COLOFF @ +                                         \ stack: apos
+  CY @ LINE-LENGTH                                        \ stack: apos llen
+  >                                                       \ stack: bool
+  IF                                                      \ apos > llen
+    CY @ LINE-LENGTH COLOFF @ -                           \ stack: reset
+    CX !                                                  \ stack:
+  ELSE                                                    \ apos <= llen
+    CX @ COLUMNS @                                        \ stack: cs cols
+    >                                                     \ stack: bool
+    IF                                                    \ cx > columns
+      CX @ 1- CX !                                        \ stack:
+      COLOFF @ 1+ COLOFF !                                \ stack:
+    THEN
+  THEN
+;
+
+: LEFT-LEN
+  ( -- )
+  CX @ 0<                                                 \ stack: bool
+  IF                                                      \ cx < 0
+    COLOFF @ 0<>                                          \ stack: bool
+    IF                                                    \ coloffset != 0
+      0 CX !                                              \ stack:
+      COLOFF @ 1- COLOFF !                                \ stack:
+    ELSE
+      CY @ 1- CY !
+    THEN
+  THEN
+;
+
+
+
 : ADJUST-FOR-LENGTH
   ( -- )
-  CY @ LINE-LENGTH    \ move the cursor to the end of a line if needed
-  DUP
-  CX @ <
-  IF
-    CX !
-  ELSE
-    DROP
-  THEN
+  LEFT-LEN
+  RIGHT-LEN
 ;
 
 
@@ -487,13 +535,24 @@ VARIABLE BUFFER_LEN
 
 : HOMEKEY
   ( -- )
+  0 COLOFF !
   0 CX !
 ;
 
 : ENDKEY
   ( -- )
-  CY @ LINE-LENGTH
-  CX !
+  CY @ LINE-LENGTH                       \ stack: llen
+  DUP                                    \ stack: llen llen
+  COLUMNS @ -                            \ stack: llen excess
+  DUP 0>                                 \ stack: llen excess bool
+  IF
+    COLOFF !                             \ stack: llen
+    COLUMNS @ CX !
+    DROP
+  ELSE
+    DROP
+    CX !
+  THEN
 ;
 
 : CHECKTILDE
@@ -529,6 +588,7 @@ VARIABLE BUFFER_LEN
   CASE
     CHAR H OF
       HOMEKEY
+      ADJUST-FOR-LENGTH
     ENDOF
     CHAR F OF
       ENDKEY
@@ -540,32 +600,16 @@ VARIABLE BUFFER_LEN
     ENDOF
     CHAR B OF                             \ arrow down
       CY @
-      1+ CY !                             \ attempt to increase
+      1+ CY !
       ADJUST-FOR-LENGTH
     ENDOF
     CHAR C OF                             \ arrow right
-      CX @ 
-      CY @ LINE-LENGTH
-      <>                                  \ not at right hand edge
-      IF
-        CX @
-        1+ CX !
-      ELSE
-        0 CX !
-        CY @ 1+ CY !
-      THEN
+      CX @  1+ CX !
+      ADJUST-FOR-LENGTH
     ENDOF
-    CHAR D OF                            \ arrow left
-      CX @ DUP
-      0<>
-      IF
-        1- CX !                          \ move left if not already at edge
-      ELSE
-        DROP
-        CY @ 1- CY !
-        COLUMNS @ CX !                   \ force to end of line
-        ADJUST-FOR-LENGTH
-      THEN
+    CHAR D OF                             \ arrow left
+      CX @ 1- CX !
+      ADJUST-FOR-LENGTH
     ENDOF
     CHAR 5 OF
       R@ CHECKTILDE                       \ page up
@@ -701,6 +745,7 @@ VARIABLE BUFFER_LEN
   0 ROW-RECORDS !
   0 ROW-COUNT !
   0 ROWOFF !
+  0 COLOFF !
   8192 SIZE-OF-ROWALLOC !
   GET-WINDOW-SIZE
   PARSE-NAME
