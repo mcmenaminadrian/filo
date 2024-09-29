@@ -467,14 +467,20 @@ VARIABLE BUFFER_LEN
   CY @ LINE-LENGTH                                        \ stack: apos llen
   >                                                       \ stack: bool
   IF                                                      \ apos > llen
-    CY @ LINE-LENGTH COLOFF @ -                           \ stack: reset
-    CX !                                                  \ stack:
+    COLOFF @ 0>                                           \ stack: bool
+    IF                                                    \ coloff > 0
+      COLOFF @ 1- COLOFF !                                \ decrement coloff
+      RECURSE                                             \ recursive call
+    ELSE                                                  \ coloff = 0
+      CY @ LINE-LENGTH                                    \ stack: llen
+      CX !                                                \ set cx to llen
+    THEN
   ELSE                                                    \ apos <= llen
-    CX @ COLUMNS @                                        \ stack: cs cols
-    >                                                     \ stack: bool
-    IF                                                    \ cx > columns
-      CX @ 1- CX !                                        \ stack:
-      COLOFF @ 1+ COLOFF !                                \ stack:
+    CX @ COLUMNS @
+    >
+    IF
+      CX @ 1- CX !
+      COLOFF @ 1+ COLOFF !
     THEN
   THEN
 ;
