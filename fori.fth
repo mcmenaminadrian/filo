@@ -461,20 +461,41 @@ VARIABLE BUFFER_LEN
 ;
 
 
+: HOMEKEY
+  ( -- )
+  0 COLOFF !
+  0 CX !
+;
+
+: ENDKEY
+  ( -- )
+  CY @ LINE-LENGTH                       \ stack: llen
+  DUP                                    \ stack: llen llen
+  COLUMNS @ -                            \ stack: llen excess
+  DUP 0>                                 \ stack: llen excess bool
+  IF
+    COLOFF !                             \ stack: llen
+    COLUMNS @ CX !
+    DROP
+  ELSE
+    DROP
+    CX !
+  THEN
+;
+
+: OVER-LINE
+  ( -- bool )
+  CX @ COLOFF @ +
+  CY @ LINE-LENGTH
+  >
+;
+
 : RIGHT-LEN
   ( -- )
-  CX @ COLOFF @ +                                         \ stack: apos
-  CY @ LINE-LENGTH                                        \ stack: apos llen
-  >                                                       \ stack: bool
+  OVER-LINE                                               \ stack: bool
   IF                                                      \ apos > llen
-    COLOFF @ 0>                                           \ stack: bool
-    IF                                                    \ coloff > 0
-      COLOFF @ 1- COLOFF !                                \ decrement coloff
-      RECURSE                                             \ recursive call
-    ELSE                                                  \ coloff = 0
-      CY @ LINE-LENGTH                                    \ stack: llen
-      CX !                                                \ set cx to llen
-    THEN
+    CY @ 1+ CY !
+    HOMEKEY
   ELSE                                                    \ apos <= llen
     CX @ COLUMNS @
     >
@@ -499,6 +520,21 @@ VARIABLE BUFFER_LEN
   THEN
 ;
 
+: SNAP-TO-LENGTH
+  ( -- )
+  BEGIN
+    OVER-LINE
+    COLOFF @ 0>
+    AND
+  WHILE
+    COLOFF @ 1- COLOFF !
+  REPEAT
+  BEGIN
+    OVER-LINE
+  WHILE
+    CX @ 1- CX !
+  REPEAT
+;
 
 
 : ADJUST-FOR-LENGTH
@@ -539,27 +575,6 @@ VARIABLE BUFFER_LEN
 \ input section	
 \
 
-: HOMEKEY
-  ( -- )
-  0 COLOFF !
-  0 CX !
-;
-
-: ENDKEY
-  ( -- )
-  CY @ LINE-LENGTH                       \ stack: llen
-  DUP                                    \ stack: llen llen
-  COLUMNS @ -                            \ stack: llen excess
-  DUP 0>                                 \ stack: llen excess bool
-  IF
-    COLOFF !                             \ stack: llen
-    COLUMNS @ CX !
-    DROP
-  ELSE
-    DROP
-    CX !
-  THEN
-;
 
 : CHECKTILDE
   ( *char -- bool)
@@ -602,12 +617,12 @@ VARIABLE BUFFER_LEN
     CHAR A OF                             \ up arrow
       CY @ 
       1- CY !
-      ADJUST-FOR-LENGTH
+      SNAP-TO-LENGTH
     ENDOF
     CHAR B OF                             \ arrow down
       CY @
       1+ CY !
-      ADJUST-FOR-LENGTH
+      SNAP-TO-LENGTH
     ENDOF
     CHAR C OF                             \ arrow right
       CX @  1+ CX !
