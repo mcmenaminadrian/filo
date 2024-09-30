@@ -374,7 +374,9 @@ VARIABLE BUFFER_LEN
         TAB-EXPANSION SWAP -            \ stack: buff to-next-tabstop
         RX @ + RX !                     \ stack: buff
       ELSE
-        RX @ 1+ RX !                    \ stack: buff
+        I 0<> IF
+          RX @ 1+ RX !                    \ stack: buff
+        THEN
       THEN
     LOOP
   THEN
@@ -407,7 +409,7 @@ VARIABLE BUFFER_LEN
 
 : EDITOR-DRAW-ROWS
   ( -- )
-  ROWS @ 1+ 1 DO
+  ROWS @ 1 DO
     I ROWOFF @ + FILEROW !
     FILEROW @ ROW-COUNT @ >
     IF
@@ -516,6 +518,7 @@ VARIABLE BUFFER_LEN
       COLOFF @ 1- COLOFF !                                \ stack:
     ELSE
       CY @ 1- CY !
+      CY @ LINE-LENGTH CX !
     THEN
   THEN
 ;
@@ -547,11 +550,25 @@ VARIABLE BUFFER_LEN
 : MOVE_CURSOR
   ( -- )
   S\" \e[" ABAPPEND                                          \ first part of escape sequence
-  CY @ 1+ >STRING COUNT ABAPPEND                             \ add y
+  CY @ 1+ >STRING >R R@ COUNT ABAPPEND                             \ add y
+  R> FREE DROPERR
   S" ;" ABAPPEND
-  RX @ 1+ >STRING COUNT ABAPPEND                             \ add x
+  RX @ 1+ >STRING >R R@ COUNT ABAPPEND                             \ add x
+  R> FREE DROPERR
   S" H" ABAPPEND
 ;
+
+: DRAW-STATUS-BAR
+  ( -- )
+  S\" \e[7m (" ABAPPEND
+  CX @ 1+ >STRING >R R@ COUNT ABAPPEND
+  R> FREE DROPERR
+  S" , " ABAPPEND
+  CY @ 1+ >STRING >R R@ COUNT ABAPPEND
+  R> FREE DROPERR
+  S\" ) \e[m" ABAPPEND
+;
+
 
 : EDITOR-REFRESH-SCREEN
   ( -- )
@@ -563,6 +580,7 @@ VARIABLE BUFFER_LEN
   \ position at top of screen
   S\" \e[1;1H" ABAPPEND
   EDITOR-DRAW-ROWS
+  DRAW-STATUS-BAR
   MOVE_CURSOR
   \ cursor reappear
   S\" \e[?25h" ABAPPEND
@@ -719,6 +737,7 @@ VARIABLE BUFFER_LEN
     DUP OF 2DROP ENDOF                    \ default
   ENDCASE
 ;
+
 
 \
 \ file io
