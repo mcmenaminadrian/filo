@@ -179,6 +179,7 @@ THEN
   R>
 ;
 
+
 : TRANSFER-RBUFF
   \ copy buffer with expansions
   ( buff rbuff size -- )
@@ -192,11 +193,11 @@ THEN
       TAB-CHAR =                                                    \ stack: buff rbuff char bool
       IF
         R@ I + TAB-EXPANSION MOD                                    \ how close to tab stop?
-        TAB-EXPANSION SWAP -  DUP                                      \ stack: buff rbuff char exp exp
+        TAB-EXPANSION SWAP -  DUP                                   \ stack: buff rbuff char exp exp
         0 DO                                                        \ stack: buff rbuff char exp
           [ decimal 32 ] literal                                    \ stack: buff rbuff char exp spc
           3 PICK J + R@ + I + C!                                    \ stack: buff rbuff char exp
-        LOOP
+        LOOP 
         R> + 1- >R
         DROP
       ELSE                                                          \ stack: buff rbuff char
@@ -366,19 +367,20 @@ VARIABLE BUFFER_LEN
   GET-ROW                               \ stack: buff len
   0<>                                   \ stack: buff bool
   IF
-    CX @ 0 DO                           \ stack: buff
-      DUP I + C@                        \ stack: buff char
-      TAB-CHAR =                        \ stack: buff bool
-      IF
-        RX @ TAB-EXPANSION MOD          \ stack: buff modulo
-        TAB-EXPANSION SWAP -            \ stack: buff to-next-tabstop
-        RX @ + RX !                     \ stack: buff
-      ELSE
-        I 0<> IF
+    CX @ 0<>
+    IF
+      CX @ 0 DO                           \ stack: buff
+        DUP I + C@                        \ stack: buff char
+        TAB-CHAR =                        \ stack: buff bool
+        IF
+          RX @ TAB-EXPANSION MOD          \ stack: buff modulo
+          TAB-EXPANSION SWAP -            \ stack: buff to-next-tabstop
+          RX @ + RX !                     \ stack: buff
+        ELSE
           RX @ 1+ RX !                    \ stack: buff
         THEN
-      THEN
-    LOOP
+      LOOP
+    THEN
   THEN
   DROP
 ;
@@ -387,13 +389,13 @@ VARIABLE BUFFER_LEN
 
 : EDITORSCROLL
   ( -- )
-  CY @ ROWS @ >
+  CY @ ROWS @ 2- >
   IF
     ROWOFF @ ROW-COUNT @ <
     IF
       ROWOFF @ 1+ ROWOFF !
     THEN
-    ROWS @ CY !
+    ROWS @ 2- CY !
   ELSE
     CY @ 0<
     IF
@@ -550,23 +552,19 @@ VARIABLE BUFFER_LEN
 : MOVE_CURSOR
   ( -- )
   S\" \e[" ABAPPEND                                          \ first part of escape sequence
-  CY @ 1+ >STRING >R R@ COUNT ABAPPEND                             \ add y
-  R> FREE DROPERR
+  CY @ 1+ <# # # # #> ABAPPEND
   S" ;" ABAPPEND
-  RX @ 1+ >STRING >R R@ COUNT ABAPPEND                             \ add x
-  R> FREE DROPERR
+  RX @ 1+ <# # # # #> ABAPPEND
   S" H" ABAPPEND
 ;
 
 : DRAW-STATUS-BAR
   ( -- )
-  S\" \e[7m (" ABAPPEND
-  CX @ 1+ >STRING >R R@ COUNT ABAPPEND
-  R> FREE DROPERR
-  S" , " ABAPPEND
-  CY @ 1+ >STRING >R R@ COUNT ABAPPEND
-  R> FREE DROPERR
-  S\" ) \e[m" ABAPPEND
+  S\" \e[7m col: " ABAPPEND
+  RX @ COLOFF @ + <# # # # #> ABAPPEND
+  S"    row: " ABAPPEND
+  CY @ ROWOFF @ + <# # # # #> ABAPPEND
+  S\" \e[m" ABAPPEND
 ;
 
 
@@ -643,7 +641,7 @@ VARIABLE BUFFER_LEN
       SNAP-TO-LENGTH
     ENDOF
     CHAR C OF                             \ arrow right
-      CX @  1+ CX !
+      CX @ 1+ CX !
       ADJUST-FOR-LENGTH
     ENDOF
     CHAR D OF                             \ arrow left
