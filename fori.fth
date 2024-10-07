@@ -9,6 +9,7 @@ VARIABLE CY
 VARIABLE ROWOFF
 VARIABLE COLOFF
 VARIABLE FILEROW
+VARIABLE EDITFILE
 HEX 5413 CONSTANT TIOCGWINSZ
 DECIMAL 0 CONSTANT STDIN
 DECIMAL 1 CONSTANT STDOUT
@@ -179,6 +180,7 @@ THEN
   R>
 ;
 
+
 : TRANSFER-RBUFF
   \ copy buffer with expansions
   ( buff rbuff size -- )
@@ -192,7 +194,7 @@ THEN
       TAB-CHAR =                                                    \ stack: buff rbuff char bool
       IF
         R@ I + TAB-EXPANSION MOD                                    \ how close to tab stop?
-        TAB-EXPANSION SWAP -  DUP                                      \ stack: buff rbuff char exp exp
+        TAB-EXPANSION SWAP -  DUP                                   \ stack: buff rbuff char exp exp
         0 DO                                                        \ stack: buff rbuff char exp
           [ decimal 32 ] literal                                    \ stack: buff rbuff char exp spc
           3 PICK J + R@ + I + C!                                    \ stack: buff rbuff char exp
@@ -366,17 +368,20 @@ VARIABLE BUFFER_LEN
   GET-ROW                               \ stack: buff len
   0<>                                   \ stack: buff bool
   IF
-    CX @ 0 DO                           \ stack: buff
-      DUP I + C@                        \ stack: buff char
-      TAB-CHAR =                        \ stack: buff bool
-      IF
-        RX @ TAB-EXPANSION MOD          \ stack: buff modulo
-        TAB-EXPANSION SWAP -            \ stack: buff to-next-tabstop
-        RX @ + RX !                     \ stack: buff
-      ELSE
-        RX @ 1+ RX !                    \ stack: buff
-      THEN
-    LOOP
+    CX @ 0<>
+    IF
+      CX @ 0 DO                           \ stack: buff
+        DUP I + C@                        \ stack: buff char
+        TAB-CHAR =                        \ stack: buff bool
+        IF
+          RX @ TAB-EXPANSION MOD          \ stack: buff modulo
+          TAB-EXPANSION SWAP -            \ stack: buff to-next-tabstop
+          RX @ + RX !                     \ stack: buff
+        ELSE
+          RX @ 1+ RX !                    \ stack: buff
+        THEN
+      LOOP
+    THEN
   THEN
   DROP
 ;
@@ -385,13 +390,13 @@ VARIABLE BUFFER_LEN
 
 : EDITORSCROLL
   ( -- )
-  CY @ ROWS @ >
+  CY @ ROWS @ 2- >
   IF
     ROWOFF @ ROW-COUNT @ <
     IF
       ROWOFF @ 1+ ROWOFF !
     THEN
-    ROWS @ CY !
+    ROWS @ 2- CY !
   ELSE
     CY @ 0<
     IF
@@ -407,7 +412,7 @@ VARIABLE BUFFER_LEN
 
 : EDITOR-DRAW-ROWS
   ( -- )
-  ROWS @ 1+ 1 DO
+  ROWS @ 1 DO
     I ROWOFF @ + FILEROW !
     FILEROW @ ROW-COUNT @ >
     IF
@@ -516,6 +521,7 @@ VARIABLE BUFFER_LEN
       COLOFF @ 1- COLOFF !                                \ stack:
     ELSE
       CY @ 1- CY !
+      CY @ LINE-LENGTH CX !
     THEN
   THEN
 ;
@@ -547,11 +553,28 @@ VARIABLE BUFFER_LEN
 : MOVE_CURSOR
   ( -- )
   S\" \e[" ABAPPEND                                          \ first part of escape sequence
-  CY @ 1+ >STRING COUNT ABAPPEND                             \ add y
+  CY @ 1+ <# #S #> ABAPPEND
   S" ;" ABAPPEND
-  RX @ 1+ >STRING COUNT ABAPPEND                             \ add x
+  RX @ 1+ <# #S #> ABAPPEND
   S" H" ABAPPEND
 ;
+
+: DRAW-STATUS-BAR
+  ( -- )
+  S\" \e[1mcol: \e[7G" ABAPPEND
+  RX @ COLOFF @ + <# #S #> ABAPPEND
+  S\"   \e[12G" ABAPPEND
+  S\" row:\e[17G" ABAPPEND
+  CY @ ROWOFF @ + <# #S #> ABAPPEND
+  S"   " ABAPPEND
+  EDITFILE @
+  0<> IF
+    S\" \e[25G" ABAPPEND
+    EDITFILE @ COUNT ABAPPEND
+  THEN
+  S\" \e[m" ABAPPEND
+;
+
 
 : EDITOR-REFRESH-SCREEN
   ( -- )
@@ -563,6 +586,7 @@ VARIABLE BUFFER_LEN
   \ position at top of screen
   S\" \e[1;1H" ABAPPEND
   EDITOR-DRAW-ROWS
+  DRAW-STATUS-BAR
   MOVE_CURSOR
   \ cursor reappear
   S\" \e[?25h" ABAPPEND
@@ -625,7 +649,7 @@ VARIABLE BUFFER_LEN
       SNAP-TO-LENGTH
     ENDOF
     CHAR C OF                             \ arrow right
-      CX @  1+ CX !
+      CX @ 1+ CX !
       ADJUST-FOR-LENGTH
     ENDOF
     CHAR D OF                             \ arrow left
@@ -721,10 +745,27 @@ VARIABLE BUFFER_LEN
 ;
 
 \
+\ Save the name of the incoming file
+\
+: SAVE-FILE-NAME
+  ( c-addr u -- c-addr u )
+  2>R
+  2R@
+  HERE EDITFILE !
+  DUP CELL+ ALLOT
+  DUP EDITFILE @ !
+  EDITFILE @ CELL+ SWAP
+  MOVE
+  2R>
+;
+
+
+\
 \ file io
 \
 : EDITOROPEN
   ( c-addr u  -- )
+  SAVE-FILE-NAME
   S\" r\0" DROP OPEN-FILE                               \ stack: fileid ior
   0<> IF
     DROP
@@ -767,6 +808,7 @@ VARIABLE BUFFER_LEN
   0 ROW-COUNT !
   0 ROWOFF !
   0 COLOFF !
+  0 EDITFILE !
   8192 SIZE-OF-ROWALLOC !
   GET-WINDOW-SIZE
   PARSE-NAME
