@@ -9,6 +9,7 @@ VARIABLE CY
 VARIABLE ROWOFF
 VARIABLE COLOFF
 VARIABLE FILEROW
+VARIABLE EDITFILE
 HEX 5413 CONSTANT TIOCGWINSZ
 DECIMAL 0 CONSTANT STDIN
 DECIMAL 1 CONSTANT STDOUT
@@ -197,7 +198,7 @@ THEN
         0 DO                                                        \ stack: buff rbuff char exp
           [ decimal 32 ] literal                                    \ stack: buff rbuff char exp spc
           3 PICK J + R@ + I + C!                                    \ stack: buff rbuff char exp
-        LOOP 
+        LOOP
         R> + 1- >R
         DROP
       ELSE                                                          \ stack: buff rbuff char
@@ -552,18 +553,25 @@ VARIABLE BUFFER_LEN
 : MOVE_CURSOR
   ( -- )
   S\" \e[" ABAPPEND                                          \ first part of escape sequence
-  CY @ 1+ <# # # # #> ABAPPEND
+  CY @ 1+ <# #S #> ABAPPEND
   S" ;" ABAPPEND
-  RX @ 1+ <# # # # #> ABAPPEND
+  RX @ 1+ <# #S #> ABAPPEND
   S" H" ABAPPEND
 ;
 
 : DRAW-STATUS-BAR
   ( -- )
-  S\" \e[7m col: " ABAPPEND
-  RX @ COLOFF @ + <# # # # #> ABAPPEND
-  S"    row: " ABAPPEND
-  CY @ ROWOFF @ + <# # # # #> ABAPPEND
+  S\" \e[1mcol: \e[7G" ABAPPEND
+  RX @ COLOFF @ + <# #S #> ABAPPEND
+  S\"   \e[12G" ABAPPEND
+  S\" row:\e[17G" ABAPPEND
+  CY @ ROWOFF @ + <# #S #> ABAPPEND
+  S"   " ABAPPEND
+  EDITFILE @
+  0<> IF
+    S\" \e[25G" ABAPPEND
+    EDITFILE @ COUNT ABAPPEND
+  THEN
   S\" \e[m" ABAPPEND
 ;
 
@@ -736,12 +744,28 @@ VARIABLE BUFFER_LEN
   ENDCASE
 ;
 
+\
+\ Save the name of the incoming file
+\
+: SAVE-FILE-NAME
+  ( c-addr u -- c-addr u )
+  2>R
+  2R@
+  HERE EDITFILE !
+  DUP CELL+ ALLOT
+  DUP EDITFILE @ !
+  EDITFILE @ CELL+ SWAP
+  MOVE
+  2R>
+;
+
 
 \
 \ file io
 \
 : EDITOROPEN
   ( c-addr u  -- )
+  SAVE-FILE-NAME
   S\" r\0" DROP OPEN-FILE                               \ stack: fileid ior
   0<> IF
     DROP
@@ -784,6 +808,7 @@ VARIABLE BUFFER_LEN
   0 ROW-COUNT !
   0 ROWOFF !
   0 COLOFF !
+  0 EDITFILE !
   8192 SIZE-OF-ROWALLOC !
   GET-WINDOW-SIZE
   PARSE-NAME
