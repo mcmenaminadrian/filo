@@ -286,9 +286,9 @@ THEN
     3 PICK                                                          \ stack: index pos char *ptr len *newptr+pos char
     SWAP C!                                                         \ stack: index pos char *ptr len
     SWAP                                                            \ stack: index pos char len *ptr
-    3 PICK +                                                        \ stack: index pos char len *ptr'
+    3 PICK +                                                      \ stack: index pos char len *ptr'
     R@                                                              \ stack: index pos char len *ptr' *newptr
-    4 PICK +                                                        \ stack: index pos char len *ptr' *newptr'
+    4 PICK + 1+                                                     \ stack: index pos char len *ptr' *newptr'
     2 PICK 5 PICK -                                                 \ stack: index pos char len *ptr' *newptr' len'
     MOVE                                                            \ stack: index pos char len
     1+ 3 PICK R>                                                    \ stack: index pos char len+1 index *newptr
