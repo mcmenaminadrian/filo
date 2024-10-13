@@ -250,9 +250,57 @@ THEN
   2DROP 2DROP                                                       \ clear stack
 ;
 
+: REPLACE-ROW
+  ( len index *ptr -- )
+  SWAP                                                              \ stack: len *ptr index
+  DUP GET-ROW                                                       \ stack: len *ptr index *optr len
+  DROP FREE DROPERR                                                 \ stack: len *ptr index
+  ROWOFF @ + 1-                                                     \ stack: len *ptr row
+  RECORDGAP *                                                       \ stack: len *ptr offset
+  ROW-RECORDS @ + >R                                                 \ stack: len *ptr
+  SWAP                                                              \ stack: *ptr len
+  R@ !
+  R> INTRASPACE + !
+;
+
+
+: EDITOR-ROW-INSERT-CHAR
+  ( index pos char -- )                                             \ insert char in row index and point pos
+  2 PICK ROWOFF @ +                                                 \ stack: index pos char row
+  GET-ROW                                                           \ stack: index pos char *ptr len
+  3 PICK DUP                                                        \ stack: index pos char *ptr len pos pos
+  0< SWAP                                                           \ stack: index pos char *ptr len bool pos
+  2 PICK >                                                          \ stack: index pos char *ptr len bool bool
+  OR IF
+    2DROP 2DROP DROP                                                \ empty stack
+  ELSE
+    DUP 1+                                                          \ stack: index pos char *ptr len len+1
+    ALLOCATE DROPERR                                                \ stack: index pos char *ptr len *newptr
+    >R                                                              \ stack: index pos char *ptr len
+    1 PICK                                                          \ stack: index pos char *ptr len *ptr
+    R@                                                              \ stack: index pos char *ptr len *ptr *newptr
+    5 PICK                                                          \ stack: index pos char *ptr len *ptr *newptr pos
+    MOVE                                                            \ stack: index pos char *ptr len
+    R@                                                              \ stack: index pos char *ptr len *newptr
+    4 PICK +                                                        \ stack: index pos char *ptr len *newptr+pos
+    3 PICK                                                          \ stack: index pos char *ptr len *newptr+pos char
+    SWAP C!                                                         \ stack: index pos char *ptr len
+    SWAP                                                            \ stack: index pos char len *ptr
+    3 PICK +                                                        \ stack: index pos char len *ptr'
+    R@                                                              \ stack: index pos char len *ptr' *newptr
+    4 PICK +                                                        \ stack: index pos char len *ptr' *newptr'
+    2 PICK 5 PICK -                                                 \ stack: index pos char len *ptr' *newptr' len'
+    MOVE                                                            \ stack: index pos char len
+    1+ 3 PICK R>                                                    \ stack: index pos char len+1 index *newptr
+    REPLACE-ROW                                                     \ stack: index pos char
+    2DROP
+    EDITOR-UPDATE-ROW
+  THEN
+;
+
 
 \
-\ Utility words					      *
+\ Utility words
 \
 
 \ is character on stack CTRL Key for that letter
@@ -305,10 +353,6 @@ THEN
   KEYRAW
 ;
 
-: CRLF
-  ( -- )
-  [ DECIMAL 13 ] LITERAL EMIT [ DECIMAL 10 ] LITERAL EMIT
-;
 
 \
 \ append buffer
@@ -724,7 +768,21 @@ VARIABLE BUFFER_LEN
     R> HANDLE-O-CASES
   THEN
 ;
-      
+
+: EDITOR-INSERT-CHAR
+  ( char -- )
+  CY @ 1+ ROWOFF @ + ROW-COUNT @
+  =
+  IF
+    ADD-ROW
+  THEN
+  CY @ 1+ ROWOFF @ + CX @                     \ stack: char index pos
+  ROT                                         \ stack: index pos char
+  EDITOR-ROW-INSERT-CHAR
+  CX @ 1+ CX !
+;
+
+
 : EDITOR-PROCESS-KEYPRESS
   ( --  )
   EDITOR-READ-KEY                                        \ stack: *ptr, char
@@ -740,7 +798,7 @@ VARIABLE BUFFER_LEN
       SWAP
       PROCESS-ESCAPED-KEY
     ENDOF
-    DUP OF 2DROP ENDOF                    \ default
+    DUP OF EDITOR-INSERT-CHAR ENDOF                    \ default
   ENDCASE
 ;
 
