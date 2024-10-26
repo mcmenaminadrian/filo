@@ -305,7 +305,7 @@ THEN
 
 \ is character on stack CTRL Key for that letter
 : CTRL-KEY ( n c -- f )
-  [ HEX 1F DECIMAL ] LITERAL AND
+  [ HEX 1F ] LITERAL AND
   =
 ;
 
@@ -596,6 +596,7 @@ VARIABLE BUFFER_LEN
 
 : MOVE_CURSOR
   ( -- )
+  DECIMAL
   S\" \e[" ABAPPEND                                          \ first part of escape sequence
   CY @ 1+ <# #S #> ABAPPEND
   S" ;" ABAPPEND
@@ -605,6 +606,7 @@ VARIABLE BUFFER_LEN
 
 : DRAW-STATUS-BAR
   ( -- )
+  DECIMAL
   S\" \e[1mcol: \e[7G" ABAPPEND
   RX @ COLOFF @ + <# #S #> ABAPPEND
   S\"   \e[12G" ABAPPEND
@@ -638,6 +640,40 @@ VARIABLE BUFFER_LEN
   ABFREE
 ;
 
+\ Convert everything to a counted string
+: EDITOR-ROWS-TO-STRING
+( -- c-str* )
+  \ first of all count how big an allocation we will need
+  0 >R
+  ROW-COUNT @ 0 DO
+    I RECORDGAP *                                         \ stack: offset
+    ROW-RECORDS @ +                                       \ stack: address
+    @                                                     \ stack: length
+    R> + 1+ >R                                            \ stack:
+  LOOP
+  \ now allocate and store length
+  R@ CELL+                                                \ stack: count+8
+  ZALLOCATE DROPERR
+  DUP                                                     \ stack: addr addr
+  R> SWAP                                                 \ stack: addr count addr
+  !                                                       \ stack: addr
+  \ now copy the lines
+  >R R@ CELL+ >R                                          \ r-stack base-addr target-addr
+  ROW-COUNT @ 0 DO
+   I RECORDGAP *
+   ROW-RECORDS @ + INTRASPACE + @                         \ stack: addr1
+   R@                                                     \ stack: addr1 addr2
+   I RECORDGAP *
+   ROW-RECORDS @ + @ DUP                                  \ stack: addr1 addr2 u u
+   \ update r-stack
+   R> + >R                                                \ stack: addr1 addr2 u
+   MOVE
+   [ decimal 10 ] literal R@ C!
+   R> 1+ >R
+LOOP
+RDROP
+R>
+;
 
 \
 \ input section	
@@ -794,11 +830,23 @@ VARIABLE BUFFER_LEN
       ." Leaving FILO " CR
       ABORT
     ENDOF
+    [ decimal 13 ] literal OF
+      2DROP                                              \ TODO : handle carriage return
+    ENDOF
     [ decimal 27 ] literal  OF
       SWAP
       PROCESS-ESCAPED-KEY
     ENDOF
-    DUP OF EDITOR-INSERT-CHAR ENDOF                    \ default
+    [ decimal 127 ] literal OF                           \ TODO : Handle backspace
+      2DROP
+    ENDOF
+    CHAR L [ hex 1F ] literal and OF
+      2DROP
+    ENDOF
+    DUP OF
+      SWAP DROP
+      EDITOR-INSERT-CHAR
+    ENDOF                    \ default
   ENDCASE
 ;
 
@@ -855,10 +903,12 @@ VARIABLE BUFFER_LEN
   R> CLOSE-FILE DROP
 ;
 
+
 \
 \ main code section                                    \
 \
 : fori ( -- n )
+  DECIMAL
   0 CX !
   0 RX !
   0 CY !
@@ -867,7 +917,7 @@ VARIABLE BUFFER_LEN
   0 ROWOFF !
   0 COLOFF !
   0 EDITFILE !
-  8192 SIZE-OF-ROWALLOC !
+  [ decimal 8192 ] literal SIZE-OF-ROWALLOC !
   GET-WINDOW-SIZE
   PARSE-NAME
   DUP 0<>
