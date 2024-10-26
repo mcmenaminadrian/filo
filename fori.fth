@@ -420,9 +420,9 @@ VARIABLE BUFFER_LEN
         IF
           RX @ TAB-EXPANSION MOD          \ stack: buff modulo
           TAB-EXPANSION SWAP -            \ stack: buff to-next-tabstop
-          RX @ + RX !                     \ stack: buff
+          RX +!                           \ stack: buff
         ELSE
-          RX @ 1+ RX !                    \ stack: buff
+          1 RX +!                         \ stack: buff
         THEN
       LOOP
     THEN
@@ -438,7 +438,7 @@ VARIABLE BUFFER_LEN
   IF
     ROWOFF @ ROW-COUNT @ <
     IF
-      ROWOFF @ 1+ ROWOFF !
+      1 ROWOFF +!
     THEN
     ROWS @ 2- CY !
   ELSE
@@ -446,7 +446,7 @@ VARIABLE BUFFER_LEN
     IF
       ROWOFF @ 0<>
       IF
-        ROWOFF @ 1- ROWOFF !
+        -1 ROWOFF +!
       THEN
       0 CY !
     THEN
@@ -543,14 +543,14 @@ VARIABLE BUFFER_LEN
   ( -- )
   OVER-LINE                                               \ stack: bool
   IF                                                      \ apos > llen
-    CY @ 1+ CY !
+    1 CY +!
     HOMEKEY
   ELSE                                                    \ apos <= llen
     CX @ COLUMNS @
     >
     IF
-      CX @ 1- CX !
-      COLOFF @ 1+ COLOFF !
+      -1 CX +!
+      1 COLOFF +!
     THEN
   THEN
 ;
@@ -562,9 +562,9 @@ VARIABLE BUFFER_LEN
     COLOFF @ 0<>                                          \ stack: bool
     IF                                                    \ coloffset != 0
       0 CX !                                              \ stack:
-      COLOFF @ 1- COLOFF !                                \ stack:
+      -1 COLOFF +!                                        \ stack:
     ELSE
-      CY @ 1- CY !
+      -1 CY +!
       CY @ LINE-LENGTH CX !
     THEN
   THEN
@@ -577,12 +577,12 @@ VARIABLE BUFFER_LEN
     COLOFF @ 0>
     AND
   WHILE
-    COLOFF @ 1- COLOFF !
+    -1 COLOFF +!
   REPEAT
   BEGIN
     OVER-LINE
   WHILE
-    CX @ 1- CX !
+    -1 CX +!
   REPEAT
 ;
 
@@ -719,21 +719,19 @@ R>
       ENDKEY
     ENDOF
     CHAR A OF                             \ up arrow
-      CY @ 
-      1- CY !
+      -1 CY +!
       SNAP-TO-LENGTH
     ENDOF
     CHAR B OF                             \ arrow down
-      CY @
-      1+ CY !
+      1 CY +!
       SNAP-TO-LENGTH
     ENDOF
     CHAR C OF                             \ arrow right
-      CX @ 1+ CX !
+      1 CX +!
       ADJUST-FOR-LENGTH
     ENDOF
     CHAR D OF                             \ arrow left
-      CX @ 1- CX !
+      -1 CX +!
       ADJUST-FOR-LENGTH
     ENDOF
     CHAR 5 OF
@@ -815,7 +813,7 @@ R>
   CY @ 1+ ROWOFF @ + CX @                     \ stack: char index pos
   ROT                                         \ stack: index pos char
   EDITOR-ROW-INSERT-CHAR
-  CX @ 1+ CX !
+  1 CX +!
 ;
 
 
