@@ -621,6 +621,26 @@ VARIABLE BUFFER_LEN
   S\" \e[m" ABAPPEND
 ;
 
+: DRAW-STATUS-MESSAGE
+  ( c-addr u -- )
+  EDITORSCROLL
+  [ decimal 64 ] literal  ZALLOCATE DROPERR BUFFER_PTR !
+  0 BUFFER_LEN !
+  \ make cursor disappear
+  S\" \e[?25l" ABAPPEND
+  \ position at top of screen
+  S\" \e[1;1H" ABAPPEND
+  EDITOR-DRAW-ROWS
+  DRAW-STATUS-BAR
+  S\" \e[50G  " ABAPPEND 
+  ABAPPEND
+  MOVE_CURSOR
+  \ cursor reappear
+  S\" \e[?25h" ABAPPEND
+  PRINT_BUFFER
+  ABFREE
+;
+
 
 : EDITOR-REFRESH-SCREEN
   ( -- )
@@ -750,7 +770,7 @@ R>
       IF
         ROWOFF @ ROWS @ + ROW-COUNT @ >
         IF
-          ROW-COUNT @ ROWS @ - ROWOFF !
+          ROW-COUNT @ CY @ - ROWOFF !
         ELSE
           ROWOFF @ ROWS @ + ROWOFF !
         THEN
@@ -817,37 +837,6 @@ R>
 ;
 
 
-: EDITOR-PROCESS-KEYPRESS
-  ( --  )
-  EDITOR-READ-KEY                                        \ stack: *ptr, char
-  CASE
-    CHAR Q [ HEX 1F ] LITERAL AND  OF
-      2DROP
-      CLEANROWS
-      CLEARSCREEN
-      ." Leaving FILO " CR
-      ABORT
-    ENDOF
-    [ decimal 13 ] literal OF
-      2DROP                                              \ TODO : handle carriage return
-    ENDOF
-    [ decimal 27 ] literal  OF
-      SWAP
-      PROCESS-ESCAPED-KEY
-    ENDOF
-    [ decimal 127 ] literal OF                           \ TODO : Handle backspace
-      2DROP
-    ENDOF
-    CHAR L [ hex 1F ] literal and OF
-      2DROP
-    ENDOF
-    DUP OF
-      SWAP DROP
-      EDITOR-INSERT-CHAR
-    ENDOF                    \ default
-  ENDCASE
-;
-
 \
 \ Save the name of the incoming file
 \
@@ -901,6 +890,70 @@ R>
   R> CLOSE-FILE DROP
 ;
 
+: EDITOR-SAVE
+  S" PREPAIRING..." DRAW-STATUS-MESSAGE
+  EDITFILE @ 0<>
+  IF
+    EDITOR-ROWS-TO-STRING                             \ stack: *c-str
+    EDITFILE @ @                                      \ stack: *c-str len
+    EDITFILE @ CELL+                                  \ stack: *c-str len *str
+    SWAP
+    R/W CREATE-FILE                                   \ stack: *c-str fileid ior
+    0= IF
+      DUP
+      >R
+      SWAP
+      DUP                                             \ stack: fileid *c-str *c-str
+      @                                               \ stack: fileid *c-str u
+      SWAP                                            \ stack: fileid u *c-str
+      CELL+                                           \ stack: fileid u c-addr
+      SWAP                                            \ stack: fileid c-addr u
+      ROT                                             \ stack: c-addr u fileid
+      WRITE-FILE                                      \ stack: len
+      <# #S #>                                        \ stack: c-addr len
+      S\"  :BYTES SAVED"                              \ stack: c-addr len c-addr1 len 1
+      S+ DRAW-STATUS-MESSAGE
+      R> CLOSE-FILE DROPERR
+    THEN
+  THEN
+  500 MS
+  S"                       " DRAW-STATUS-MESSAGE
+;   
+
+: EDITOR-PROCESS-KEYPRESS
+  ( --  )
+  EDITOR-READ-KEY                                        \ stack: *ptr, char
+  CASE
+    CHAR Q [ HEX 1F ] LITERAL AND  OF
+      2DROP
+      CLEANROWS
+      CLEARSCREEN
+      ." Leaving FILO " CR
+      ABORT
+    ENDOF
+    [ decimal 13 ] literal OF
+      2DROP                                              \ TODO : handle carriage return
+    ENDOF
+    [ decimal 27 ] literal  OF
+      SWAP
+      PROCESS-ESCAPED-KEY
+    ENDOF
+    [ decimal 127 ] literal OF                           \ TODO : Handle backspace
+      2DROP
+    ENDOF
+    CHAR L [ hex 1F ] literal and OF
+      2DROP
+    ENDOF
+    CHAR S [ HEX 1F ] LITERAL AND OF
+      2DROP
+      EDITOR-SAVE
+    ENDOF
+    DUP OF
+      SWAP DROP
+      EDITOR-INSERT-CHAR
+    ENDOF                    \ default
+  ENDCASE
+;
 
 \
 \ main code section                                    \
