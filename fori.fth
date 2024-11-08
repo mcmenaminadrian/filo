@@ -572,20 +572,23 @@ VARIABLE BUFFER_LEN
 
 : SNAP-TO-LENGTH
   ( -- )
-  BEGIN
-    OVER-LINE
-    COLOFF @ 0>
-    AND
-  WHILE
-    -1 COLOFF +!
-  REPEAT
-  BEGIN
-    OVER-LINE
-  WHILE
-    -1 CX +!
-  REPEAT
+  CY @ LINE-LENGTH
+  >R
+  CX @ COLOFF @ + R@ >
+  IF
+    R@ COLUMNS @ >
+    IF
+      COLUMNS @ CX !
+      R@ COLUMNS @ -
+      COLOFF !
+    ELSE
+      0 COLOFF !
+      R@ CX !
+    THEN
+  THEN
+  RDROP
 ;
-
+ 
 
 : ADJUST-FOR-LENGTH
   ( -- )
@@ -830,10 +833,11 @@ R>
   IF
     ADD-ROW
   THEN
-  CY @ 1+ ROWOFF @ + CX @                     \ stack: char index pos
+  CY @ 1+ ROWOFF @ + CX @ COLOFF @ +          \ stack: char index pos
   ROT                                         \ stack: index pos char
   EDITOR-ROW-INSERT-CHAR
   1 CX +!
+  ADJUST-FOR-LENGTH
 ;
 
 
@@ -910,9 +914,11 @@ R>
       SWAP                                            \ stack: fileid c-addr u
       ROT                                             \ stack: c-addr u fileid
       WRITE-FILE                                      \ stack: len
-      <# #S #>                                        \ stack: c-addr len
-      S\"  :BYTES SAVED"                              \ stack: c-addr len c-addr1 len 1
-      S+ DRAW-STATUS-MESSAGE
+      <# #S #>
+      S\"  :BYTES SAVED"
+      S+ 2>R
+      2R@ DRAW-STATUS-MESSAGE
+      2R> DROP FREE DROPERR
       R> CLOSE-FILE DROPERR
     THEN
   THEN
