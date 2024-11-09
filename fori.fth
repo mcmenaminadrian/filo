@@ -8,8 +8,8 @@ VARIABLE RX
 VARIABLE CY
 VARIABLE ROWOFF
 VARIABLE COLOFF
-VARIABLE FILEROW
 VARIABLE EDITFILE
+VARIABLE DIRTY
 HEX 5413 CONSTANT TIOCGWINSZ
 DECIMAL 0 CONSTANT STDIN
 DECIMAL 1 CONSTANT STDOUT
@@ -429,8 +429,7 @@ VARIABLE BUFFER_LEN
   THEN
   DROP
 ;
-
-          
+ 
 
 : EDITORSCROLL
   ( -- )
@@ -457,8 +456,8 @@ VARIABLE BUFFER_LEN
 : EDITOR-DRAW-ROWS
   ( -- )
   ROWS @ 1 DO
-    I ROWOFF @ + FILEROW !
-    FILEROW @ ROW-COUNT @ >
+    I ROWOFF @ + >R
+    R@ ROW-COUNT @ >
     IF
       ROW-COUNT @ 0= ROWS @ 3 / I = AND
       IF  \ welcome message
@@ -467,7 +466,7 @@ VARIABLE BUFFER_LEN
         S" ~" ABAPPEND
       THEN
     ELSE
-      FILEROW @ GET-RROW                      \ stack: *ptr len
+      R@ GET-RROW                      \ stack: *ptr len
       COLOFF @ -                              \ shorten len: len - coloff = slen
       DUP                                     \ stack: *ptr slen slen
       0<                                      \ stack: *ptr slen bool
@@ -493,6 +492,7 @@ VARIABLE BUFFER_LEN
     IF
       S\" \r\n" ABAPPEND
     THEN
+    RDROP
   LOOP
 ;
   
@@ -619,6 +619,12 @@ VARIABLE BUFFER_LEN
   EDITFILE @
   0<> IF
     S\" \e[25G" ABAPPEND
+    DIRTY @ 0=
+    IF
+      S\" \e[39;49m" ABAPPEND
+    ELSE
+      S\" \e[31m" ABAPPEND
+    THEN
     EDITFILE @ COUNT ABAPPEND
   THEN
   S\" \e[m" ABAPPEND
@@ -683,24 +689,67 @@ VARIABLE BUFFER_LEN
   \ now copy the lines
   >R R@ CELL+ >R                                          \ r-stack base-addr target-addr
   ROW-COUNT @ 0 DO
-   I RECORDGAP *
-   ROW-RECORDS @ + INTRASPACE + @                         \ stack: addr1
-   R@                                                     \ stack: addr1 addr2
-   I RECORDGAP *
-   ROW-RECORDS @ + @ DUP                                  \ stack: addr1 addr2 u u
-   \ update r-stack
-   R> + >R                                                \ stack: addr1 addr2 u
-   MOVE
-   [ decimal 10 ] literal R@ C!
-   R> 1+ >R
-LOOP
-RDROP
-R>
+    I RECORDGAP *
+    ROW-RECORDS @ + INTRASPACE + @                         \ stack: addr1
+    R@                                                     \ stack: addr1 addr2
+    I RECORDGAP *
+    ROW-RECORDS @ + @ DUP                                  \ stack: addr1 addr2 u u
+    \ update r-stack
+    R> + >R                                                \ stack: addr1 addr2 u
+    MOVE
+    [ decimal 10 ] literal R@ C!
+    R> 1+ >R
+  LOOP
+  RDROP
+  R>
 ;
 
 \
 \ input section	
 \
+
+: SHORTEN-LINE
+  ( -- )
+  CY @ ROWOFF @ +
+  RECORDGAP *
+  ROW-RECORDS @ +
+  -1 SWAP +!
+  -1 CX +!
+;
+
+: REGENERATE-RROW
+  ( -- )
+  CY @ ROWOFF @ + 1+ 
+  EDITOR-UPDATE-ROW
+; 
+
+
+: PROCESS-BACKSPACE
+  ( -- )
+  \ get the row
+  CY @ LINE-LENGTH                                        \ stack: llen
+  0<>
+  IF
+    CX @ COLOFF @ +                                       \ stack: pos
+    CY @ ROWOFF @ + 1+
+    GET-ROW                                               \ stack: pos buff len
+    2 PICK                                                \ stack: pos buff len pos
+    -                                                     \ stack: pos buff diff
+    1 PICK                                                \ stack: pos buff diff buff
+    3 PICK                                                \ stack: pos buff diff buff pos
+    +                                                     \ stack: pos buff diff rbuff
+    DUP 1+                                                \ stack: pos buff diff rbuff saddr
+    SWAP
+    ROT
+    MOVE
+    SHORTEN-LINE
+    REGENERATE-RROW
+    1 DIRTY !   
+  ELSE
+    DROP
+  THEN
+;
+
 
 
 : CHECKTILDE
@@ -806,7 +855,7 @@ R>
     CHAR 3 OF
       R@ CHECKTILDE
       IF
-        NOP                                 \ delete key - to be implemented
+        PROCESS-BACKSPACE                      \ delete key - to be implemented
       THEN
     ENDOF
     DUP OF DROP ENDOF                          \ default
@@ -838,6 +887,8 @@ R>
   EDITOR-ROW-INSERT-CHAR
   1 CX +!
   ADJUST-FOR-LENGTH
+  1 DIRTY !
+  S" Unsaved changes                      " DRAW-STATUS-MESSAGE
 ;
 
 
@@ -862,7 +913,10 @@ R>
 \
 : EDITOROPEN
   ( c-addr u  -- )
-  SAVE-FILE-NAME
+  EDITFILE @ 0=
+  IF
+    SAVE-FILE-NAME
+  THEN
   S\" r\0" DROP OPEN-FILE                               \ stack: fileid ior
   0<> IF
     DROP
@@ -895,8 +949,10 @@ R>
 ;
 
 : EDITOR-SAVE
-  S" PREPAIRING..." DRAW-STATUS-MESSAGE
+  S"                                      " DRAW-STATUS-MESSAGE
+  DECIMAL
   EDITFILE @ 0<>
+  DIRTY @ 0<> AND
   IF
     EDITOR-ROWS-TO-STRING                             \ stack: *c-str
     EDITFILE @ @                                      \ stack: *c-str len
@@ -920,11 +976,17 @@ R>
       2R@ DRAW-STATUS-MESSAGE
       2R> DROP FREE DROPERR
       R> CLOSE-FILE DROPERR
+      0 DIRTY !
+    ELSE
+      S\" SAVING FAILED" DRAW-STATUS-MESSAGE
     THEN
+  ELSE
+    S\" NOTHING TO SAVE" DRAW-STATUS-MESSAGE
   THEN
   500 MS
   S"                       " DRAW-STATUS-MESSAGE
 ;   
+
 
 : EDITOR-PROCESS-KEYPRESS
   ( --  )
@@ -938,21 +1000,41 @@ R>
       ABORT
     ENDOF
     [ decimal 13 ] literal OF
-      2DROP                                              \ TODO : handle carriage return
+      SWAP
+      DROP                                              \ TODO : handle carriage return
     ENDOF
     [ decimal 27 ] literal  OF
       SWAP
       PROCESS-ESCAPED-KEY
     ENDOF
     [ decimal 127 ] literal OF                           \ TODO : Handle backspace
-      2DROP
+      SWAP
+      DROP
+      PROCESS-BACKSPACE
     ENDOF
     CHAR L [ hex 1F ] literal and OF
-      2DROP
+      SWAP
+      DROP
     ENDOF
     CHAR S [ HEX 1F ] LITERAL AND OF
-      2DROP
+      SWAP
+      DROP
       EDITOR-SAVE
+    ENDOF
+    CHAR Z [ HEX 1F ] LITERAL AND OF
+      SWAP
+      DROP
+      DIRTY @ 0<>
+      EDITFILE @ 0<>
+      AND
+      IF
+        CLEANROWS
+        EDITFILE @ CELL+
+        EDITFILE @ @
+        EDITOROPEN
+        S"                                        " DRAW-STATUS-MESSAGE
+        0 DIRTY !
+      THEN
     ENDOF
     DUP OF
       SWAP DROP
@@ -974,6 +1056,7 @@ R>
   0 ROWOFF !
   0 COLOFF !
   0 EDITFILE !
+  0 DIRTY !
   [ decimal 8192 ] literal SIZE-OF-ROWALLOC !
   GET-WINDOW-SIZE
   PARSE-NAME
@@ -983,6 +1066,7 @@ R>
   ELSE
     2DROP
   THEN
+  S" HELP: Ctrl-S - save, Ctrl-Q - quit" DRAW-STATUS-MESSAGE
   BEGIN
     EDITOR-REFRESH-SCREEN
     EDITOR-PROCESS-KEYPRESS
