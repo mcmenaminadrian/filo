@@ -121,9 +121,9 @@ THEN
       ROW-RECORDS @ R@ SIZE-OF-ROWALLOC @ MOVE
       ROW-RECORDS @ FREE DROPERR
       R> ROW-RECORDS !
-      SIZE-OF-ROWALLOC @ 4096 + SIZE-OF-ROWALLOC !
+      4096 SIZE-OF-ROWALLOC +!
     THEN
-    ROW-COUNT @ 1+ ROW-COUNT !
+    1 ROW-COUNT +!
   THEN
   0 0 ROW-COUNT @ SET-ROW SETROW-ERR
 ;
@@ -145,7 +145,7 @@ THEN
 \ get the render row at a given index
 : GET-RROW
   ( u -- ptr* len )
-  >R R@ ROW-COUNT @ 1- >
+  >R R@ ROW-COUNT @ >
   IF
     0 0         \ return nothing
   ELSE
@@ -374,7 +374,7 @@ VARIABLE BUFFER_LEN
     >R                                                  \ store old length
     BUFFER_LEN @ TEMP !                                 \ get existing length
     BUFFER_PTR @  BUFFER_LEN @ R@ + RESIZE DROPERR      \ get a buffer of new size
-    R@ BUFFER_LEN @ + BUFFER_LEN !                      \ store new size
+    R@ BUFFER_LEN +!                                    \ store new size
     BUFFER_PTR !                                        \ store address
     TEMP @                                              \ calculate offset for copying
     BUFFER_PTR @ +                                      \ add to get start point
@@ -466,7 +466,7 @@ VARIABLE BUFFER_LEN
         S" ~" ABAPPEND
       THEN
     ELSE
-      R@ GET-RROW                      \ stack: *ptr len
+      R@ GET-RROW                             \ stack: *ptr len
       COLOFF @ -                              \ shorten len: len - coloff = slen
       DUP                                     \ stack: *ptr slen slen
       0<                                      \ stack: *ptr slen bool
@@ -498,7 +498,7 @@ VARIABLE BUFFER_LEN
   
 : PRINT_BUFFER
   ( -- )
-  BUFFER_PTR @ BUFFER_LEN @ TYPE
+  BUFFER_PTR @ BUFFER_LEN @ NOP TYPE
 ;
 
 : LINE-LENGTH
@@ -911,6 +911,13 @@ VARIABLE BUFFER_LEN
 \
 \ file io
 \
+: ADD-RROWS
+  ( -- )
+  ROW-COUNT @ 0 DO
+    I 1+ EDITOR-UPDATE-ROW
+  LOOP
+;
+
 : EDITOROPEN
   ( c-addr u  -- )
   EDITFILE @ 0=
@@ -941,8 +948,8 @@ VARIABLE BUFFER_LEN
     ELSE
       DROP
     THEN
-    ROW-COUNT @ EDITOR-UPDATE-ROW                       \ insert a render buffer - even a blank one if we have to
   REPEAT
+  ADD-RROWS
   DROP
   LINEBUFFER @ FREE DROPERR
   R> CLOSE-FILE DROP
