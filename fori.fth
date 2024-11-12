@@ -714,7 +714,6 @@ VARIABLE BUFFER_LEN
   RECORDGAP *
   ROW-RECORDS @ +
   -1 SWAP +!
-  -1 CX +!
 ;
 
 : REGENERATE-RROW
@@ -745,6 +744,7 @@ VARIABLE BUFFER_LEN
     SHORTEN-LINE
     REGENERATE-RROW
     1 DIRTY !   
+    S" Unsaved changes                      " DRAW-STATUS-MESSAGE
   ELSE
     DROP
   THEN
@@ -1017,6 +1017,7 @@ VARIABLE BUFFER_LEN
     [ decimal 127 ] literal OF                           \ TODO : Handle backspace
       SWAP
       DROP
+      -1 CX +!
       PROCESS-BACKSPACE
     ENDOF
     CHAR L [ hex 1F ] literal and OF
