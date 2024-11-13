@@ -230,7 +230,7 @@ THEN
   DUP                                                               \ duplicate
   0<>                                                               \ test not zero
   IF
-    FREE                                                            \ if not zero, free
+    FREE DROPERR                                                    \ if not zero, free
   ELSE
     DROP
   THEN
@@ -286,14 +286,14 @@ THEN
     3 PICK                                                          \ stack: index pos char *ptr len *newptr+pos char
     SWAP C!                                                         \ stack: index pos char *ptr len
     SWAP                                                            \ stack: index pos char len *ptr
-    3 PICK +                                                      \ stack: index pos char len *ptr'
+    3 PICK +                                                        \ stack: index pos char len *ptr'
     R@                                                              \ stack: index pos char len *ptr' *newptr
     4 PICK + 1+                                                     \ stack: index pos char len *ptr' *newptr'
     2 PICK 5 PICK -                                                 \ stack: index pos char len *ptr' *newptr' len'
     MOVE                                                            \ stack: index pos char len
     1+ 3 PICK R>                                                    \ stack: index pos char len+1 index *newptr
     REPLACE-ROW                                                     \ stack: index pos char
-    2DROP
+    2DROP 
     EDITOR-UPDATE-ROW
   THEN
 ;
@@ -498,7 +498,7 @@ VARIABLE BUFFER_LEN
   
 : PRINT_BUFFER
   ( -- )
-  BUFFER_PTR @ BUFFER_LEN @ NOP TYPE
+  BUFFER_PTR @ BUFFER_LEN @ TYPE
 ;
 
 : LINE-LENGTH
@@ -722,31 +722,83 @@ VARIABLE BUFFER_LEN
   EDITOR-UPDATE-ROW
 ; 
 
-
-: PROCESS-BACKSPACE
-  ( -- )
-  \ get the row
-  CY @ LINE-LENGTH                                        \ stack: llen
-  0<>
+: EDITOR-FREE-ROW
+  ( u -- )
+  \ free row at u
+  DUP
+  ROW-COUNT @ <=
   IF
-    CX @ COLOFF @ +                                       \ stack: pos
-    CY @ ROWOFF @ + 1+
-    GET-ROW                                               \ stack: pos buff len
-    2 PICK                                                \ stack: pos buff len pos
-    -                                                     \ stack: pos buff diff
-    1 PICK                                                \ stack: pos buff diff buff
-    3 PICK                                                \ stack: pos buff diff buff pos
-    +                                                     \ stack: pos buff diff rbuff
-    DUP 1+                                                \ stack: pos buff diff rbuff saddr
-    SWAP
-    ROT
-    MOVE
-    SHORTEN-LINE
-    REGENERATE-RROW
-    1 DIRTY !   
-    S" Unsaved changes                      " DRAW-STATUS-MESSAGE
+    RECORDGAP * ROW-RECORDS @ + CELL+ >R
+    R@ @  FREE DROPERR
+    R> INTRAGAP + @ FREE DROPERR 
   ELSE
     DROP
+  THEN
+;
+
+: EDITOR-REORDER-ROWS
+  ( u -- )
+  \ reorder all rows from u onwards
+  >R
+  R@ ROW-COUNT @ <=
+  IF
+    ROW-COUNT @ 1+ R> 1+
+    DO
+      I RECORDGAP * ROW-RECORDS @ + >R
+      4 0 DO
+        R@ @ R@ RECORDGAP - !
+        R> CELL+ >R
+      LOOP
+      RDROP
+    LOOP
+    ROW-COUNT @ RECORDGAP * ROW-RECORDS @ + >R
+    4 0 DO
+      0 R@ RECORDGAP - !
+      R> CELL+ >R
+    LOOP
+    RDROP
+    -1 ROW-COUNT +!
+  ELSE
+    RDROP
+  THEN
+;
+
+: MARK-DIRTY
+  ( -- )
+  1 DIRTY !   
+  S" Unsaved changes                      " DRAW-STATUS-MESSAGE
+;
+
+: PROCESS-BACKSPACE
+  (  -- )
+  CX @ -1 =
+  IF
+    CY @ EDITOR-FREE-ROW
+    CY @ EDITOR-REORDER-ROWS
+    MARK-DIRTY
+  ELSE
+    \ get the row
+    CY @ LINE-LENGTH                                        \ stack: llen
+    0<>
+    IF
+      CX @ COLOFF @ +                                       \ stack: pos
+      CY @ ROWOFF @ + 1+
+      GET-ROW                                               \ stack: pos buff len
+      2 PICK                                                \ stack: pos buff len pos
+      -                                                     \ stack: pos buff diff
+      1 PICK                                                \ stack: pos buff diff buff
+      3 PICK                                                \ stack: pos buff diff buff pos
+      +                                                     \ stack: pos buff diff rbuff
+      DUP 1+                                                \ stack: pos buff diff rbuff saddr
+      SWAP
+      ROT
+      MOVE
+      SHORTEN-LINE
+      REGENERATE-RROW
+      MARK-DIRTY
+    ELSE
+      DROP
+    THEN
   THEN
 ;
 
@@ -772,7 +824,7 @@ VARIABLE BUFFER_LEN
       CHAR F OF
         ENDKEY
       ENDOF
-      DUP OF DROP ENDOF
+      \ no default here
     ENDCASE
   THEN
   RDROP
@@ -853,12 +905,13 @@ VARIABLE BUFFER_LEN
       THEN
     ENDOF
     CHAR 3 OF
+      DROP
       R@ CHECKTILDE
       IF
-        PROCESS-BACKSPACE                      \ delete key - to be implemented
+        PROCESS-BACKSPACE 
       THEN
     ENDOF
-    DUP OF DROP ENDOF                          \ default
+    \ no default
   ENDCASE
   RDROP
 ;
@@ -997,7 +1050,7 @@ VARIABLE BUFFER_LEN
 
 : EDITOR-PROCESS-KEYPRESS
   ( --  )
-  EDITOR-READ-KEY                                        \ stack: *ptr, char
+  EDITOR-READ-KEY                                       \ stack: *ptr, char
   CASE
     CHAR Q [ HEX 1F ] LITERAL AND  OF
       2DROP
@@ -1044,10 +1097,8 @@ VARIABLE BUFFER_LEN
         0 DIRTY !
       THEN
     ENDOF
-    DUP OF
-      SWAP DROP
-      EDITOR-INSERT-CHAR
-    ENDOF                    \ default
+    SWAP DROP DUP
+    EDITOR-INSERT-CHAR                            \ default
   ENDCASE
 ;
 
