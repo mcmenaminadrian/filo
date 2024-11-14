@@ -790,12 +790,13 @@ VARIABLE BUFFER_LEN
       3 PICK                                                \ stack: pos buff diff buff pos
       +                                                     \ stack: pos buff diff rbuff
       DUP 1+                                                \ stack: pos buff diff rbuff saddr
-      SWAP
-      ROT
-      MOVE
-      SHORTEN-LINE
-      REGENERATE-RROW
-      MARK-DIRTY
+      SWAP                                                  \ stack: pos buff diff saddr rbuff
+      ROT                                                   \ stack: pos buff addr rbuff diff
+      MOVE                                                  \ stack: pos buff
+      SHORTEN-LINE                                          \ stack: pos buff
+      REGENERATE-RROW                                       \ stack: pos buff
+      MARK-DIRTY                                            \ stack: pos buff
+      2DROP
     ELSE
       DROP
     THEN
@@ -905,7 +906,6 @@ VARIABLE BUFFER_LEN
       THEN
     ENDOF
     CHAR 3 OF
-      DROP
       R@ CHECKTILDE
       IF
         PROCESS-BACKSPACE 
