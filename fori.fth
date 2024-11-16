@@ -763,6 +763,38 @@ VARIABLE BUFFER_LEN
   THEN
 ;
 
+: INSERT-NEW-SIZE
+  ( newsize index -- )
+  RECORDGAP * ROW-RECORDS @ + !
+;
+
+: INSERT-NEW-STR
+  ( newstr index -- )
+  RECORDGAP * ROW-RECORDS @ + CELL+ !
+;
+
+: EDITOR-JOIN-ROW
+  ( u -- )
+  DUP DUP 1+ GET-ROW SWAP >R                                 \ stack: index index size
+  SWAP GET-ROW                                         \ stack: index size *ptr len
+  SWAP                                                    \ stack: index size len *ptr
+  1 PICK                                                  \ stack: index size len *ptr len
+  3 PICK                                                  \ stack: index size len *ptr len size
+  +                                                       \ stack: index size len *ptr newsize
+  DUP                                                     \ stack: index size len *ptr newsize newsize
+  5 PICK 1-                                              \ stack: index size len *ptr newsize newsize index-
+  INSERT-NEW-SIZE                                         \ stack: index size len *ptr newsize
+  RESIZE DROPERR                                          \ stack: index size len *newptr
+  DUP                                                     \ stack: index size len *newptr *newptr
+  4 PICK  1-                                              \ stack: index size len *newptr *newptr index-
+  INSERT-NEW-STR                                          \ stack: index size len *newptr
+  +                                                       \ stack: index size *dest
+  R> SWAP                                                 \ stack: index size *src *dest
+  ROT                                                     \ stack: index *src *dest size
+  MOVE                                                    \ stack: index
+  DROP
+;
+
 : MARK-DIRTY
   ( -- )
   1 DIRTY !   
@@ -771,18 +803,27 @@ VARIABLE BUFFER_LEN
 
 : PROCESS-BACKSPACE
   (  -- )
+  CY @ ROWOFF @ + >R
   CX @ -1 =
   IF
-    CY @ EDITOR-FREE-ROW
-    CY @ EDITOR-REORDER-ROWS
-    MARK-DIRTY
+    R@ 0<>
+    IF
+      R@ EDITOR-JOIN-ROW
+      R@ EDITOR-FREE-ROW
+      R@ EDITOR-REORDER-ROWS
+      -1 CY +! ENDKEY
+      REGENERATE-RROW
+      MARK-DIRTY
+    ELSE
+      0 CX !
+    THEN
   ELSE
     \ get the row
     CY @ LINE-LENGTH                                        \ stack: llen
     0<>
     IF
       CX @ COLOFF @ +                                       \ stack: pos
-      CY @ ROWOFF @ + 1+
+      R@ 1+
       GET-ROW                                               \ stack: pos buff len
       2 PICK                                                \ stack: pos buff len pos
       -                                                     \ stack: pos buff diff
@@ -801,8 +842,8 @@ VARIABLE BUFFER_LEN
       DROP
     THEN
   THEN
+  RDROP
 ;
-
 
 
 : CHECKTILDE
