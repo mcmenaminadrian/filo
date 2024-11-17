@@ -128,6 +128,51 @@ THEN
   0 0 ROW-COUNT @ SET-ROW SETROW-ERR
 ;
 
+: INSERT-EMPTY-ROW
+  ( addr addr -- )
+  0 SWAP !
+  0 SWAP CELL+ !
+;
+
+
+: INSERT-ROW-ALLOC
+  ( row -- )
+  ROW-COUNT @ 1+                                       \ stack: row count+
+  RECORDGAP *                                          \ stack: row newsize
+  SIZE-OF-ROWALLOC @ >
+  \ create or identify dest
+  IF
+    SIZE-OF-ROWALLOC @ 4096 + ZALLOCATE DROPERR >R
+    \ copy everything over
+    ROW-RECORDS @ R@ SIZE-OF-ROWALLOC @ MOVE
+    4096 SIZE-OF-ROWALLOC +!
+  ELSE
+    ROW-RECORDS @ >R
+  THEN
+  >R
+  ROW-RECORDS @ R@ 1+ RECORDGAP * +                    \ stack: src'
+  2R@                                                  \ stack: src' dest row
+  2+ RECORDGAP * +                                     \ stack: src' dest'
+  ROW-COUNT @ RECORDGAP *                              \ stack: src' dest' oldsz
+  R@ 1+ RECORDGAP * -                                  \ stack: src' dest' remsz
+  MOVE                                                 \ stack: <empty>
+  R> 1+ RECORDGAP * R@ + DUP DUP                       \ stack: addr addr addr
+  INSERT-EMPTY-ROW                                     \ stack: addr
+  INTRAGAP + DUP                                       \ stack: addr' addr'
+  INSERT-EMPTY-ROW                                     \ stack: <empty>
+  \ if we needed a new store free the old one
+  R@ ROW-RECORDS @
+  <>
+  IF
+    ROW-RECORDS @ FREE DROPERR
+    R> ROW-RECORDS !
+  ELSE
+    RDROP
+  THEN
+  1 ROW-COUNT +!
+;
+
+
 \ get the data at a given index
 : GET-ROW
   ( u -- ptr* len )
@@ -188,7 +233,7 @@ THEN
   IF
     0 >R                                                            \ how many expansions added
     0 DO
-      1 PICK                                                        \ stack: buff rbuff buff
+      OVER                                                        \ stack: buff rbuff buff
       I + C@                                                        \ stack: buff rbuff char
       DUP                                                           \ stack: buff rbuff char char
       TAB-CHAR =                                                    \ stack: buff rbuff char bool
@@ -202,7 +247,7 @@ THEN
         R> + 1- >R
         DROP
       ELSE                                                          \ stack: buff rbuff char
-        1 PICK R@ + I + C!
+        OVER R@ + I + C!
       THEN
     LOOP
     RDROP
@@ -245,8 +290,8 @@ THEN
   R@ GET-ROW-SIZE                                                   \ stack: rsize buff rbuff buff rbuff size
   TRANSFER-RBUFF                                                    \ stack: rsize buff rbuff
   R> 1- RECORDGAP * INTRAGAP + ROW-RECORDS @ +                      \ stack: rsize buff rbuff addr
-  3 PICK 1 PICK !                                                   \ store length
-  1 PICK 1 PICK INTRASPACE + !                                      \ store rbuff
+  3 PICK OVER !                                                   \ store length
+  OVER OVER INTRASPACE + !                                      \ store rbuff
   2DROP 2DROP                                                       \ clear stack
 ;
 
@@ -277,7 +322,7 @@ THEN
     DUP 1+                                                          \ stack: index pos char *ptr len len+1
     ALLOCATE DROPERR                                                \ stack: index pos char *ptr len *newptr
     >R                                                              \ stack: index pos char *ptr len
-    1 PICK                                                          \ stack: index pos char *ptr len *ptr
+    OVER                                                          \ stack: index pos char *ptr len *ptr
     R@                                                              \ stack: index pos char *ptr len *ptr *newptr
     5 PICK                                                          \ stack: index pos char *ptr len *ptr *newptr pos
     MOVE                                                            \ stack: index pos char *ptr len
@@ -736,7 +781,7 @@ VARIABLE BUFFER_LEN
   THEN
 ;
 
-: EDITOR-REORDER-ROWS
+: EDITOR-REORDER-ROWS-UP
   ( u -- )
   \ reorder all rows from u onwards
   >R
@@ -775,14 +820,14 @@ VARIABLE BUFFER_LEN
 
 : EDITOR-JOIN-ROW
   ( u -- )
-  DUP DUP 1+ GET-ROW SWAP >R                                 \ stack: index index size
-  SWAP GET-ROW                                         \ stack: index size *ptr len
+  DUP DUP 1+ GET-ROW SWAP >R                              \ stack: index index size
+  SWAP GET-ROW                                            \ stack: index size *ptr len
   SWAP                                                    \ stack: index size len *ptr
-  1 PICK                                                  \ stack: index size len *ptr len
+  OVER                                                  \ stack: index size len *ptr len
   3 PICK                                                  \ stack: index size len *ptr len size
   +                                                       \ stack: index size len *ptr newsize
   DUP                                                     \ stack: index size len *ptr newsize newsize
-  5 PICK 1-                                              \ stack: index size len *ptr newsize newsize index-
+  5 PICK 1-                                               \ stack: index size len *ptr newsize newsize index-
   INSERT-NEW-SIZE                                         \ stack: index size len *ptr newsize
   RESIZE DROPERR                                          \ stack: index size len *newptr
   DUP                                                     \ stack: index size len *newptr *newptr
@@ -801,6 +846,13 @@ VARIABLE BUFFER_LEN
   S" Unsaved changes                      " DRAW-STATUS-MESSAGE
 ;
 
+: PROCESS-ENTER
+  ( -- )
+  CY @ ROWOFF @ +
+  INSERT-ROW-ALLOC
+  MARK-DIRTY
+;
+
 : PROCESS-BACKSPACE
   (  -- )
   CY @ ROWOFF @ + >R
@@ -810,7 +862,7 @@ VARIABLE BUFFER_LEN
     IF
       R@ EDITOR-JOIN-ROW
       R@ EDITOR-FREE-ROW
-      R@ EDITOR-REORDER-ROWS
+      R@ EDITOR-REORDER-ROWS-UP
       -1 CY +! ENDKEY
       REGENERATE-RROW
       MARK-DIRTY
@@ -827,7 +879,7 @@ VARIABLE BUFFER_LEN
       GET-ROW                                               \ stack: pos buff len
       2 PICK                                                \ stack: pos buff len pos
       -                                                     \ stack: pos buff diff
-      1 PICK                                                \ stack: pos buff diff buff
+      OVER                                                \ stack: pos buff diff buff
       3 PICK                                                \ stack: pos buff diff buff pos
       +                                                     \ stack: pos buff diff rbuff
       DUP 1+                                                \ stack: pos buff diff rbuff saddr
@@ -1100,10 +1152,6 @@ VARIABLE BUFFER_LEN
       ." Leaving FILO " CR
       ABORT
     ENDOF
-    [ decimal 13 ] literal OF
-      SWAP
-      DROP                                              \ TODO : handle carriage return
-    ENDOF
     [ decimal 27 ] literal  OF
       SWAP
       PROCESS-ESCAPED-KEY
@@ -1137,6 +1185,10 @@ VARIABLE BUFFER_LEN
         S"                                        " DRAW-STATUS-MESSAGE
         0 DIRTY !
       THEN
+    ENDOF
+    [ DECIMAL 13 ] LITERAL OF
+      SWAP DROP
+      PROCESS-ENTER
     ENDOF
     SWAP DROP DUP
     EDITOR-INSERT-CHAR                            \ default
