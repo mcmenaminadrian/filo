@@ -146,31 +146,25 @@ THEN
     \ copy everything over
     ROW-RECORDS @ R@ SIZE-OF-ROWALLOC @ MOVE
     4096 SIZE-OF-ROWALLOC +!
+    ROW-RECORDS @ FREE DROPERR
+    R@ ROW-RECORDS !
   ELSE
     ROW-RECORDS @ >R
   THEN
   >R
-  ROW-RECORDS @ R@ 1+ RECORDGAP * +                    \ stack: src'
+  2R@ 1+ RECORDGAP * +                                 \ stack: src'
   2R@                                                  \ stack: src' dest row
   2+ RECORDGAP * +                                     \ stack: src' dest'
   ROW-COUNT @ RECORDGAP *                              \ stack: src' dest' oldsz
   R@ 1+ RECORDGAP * -                                  \ stack: src' dest' remsz
   MOVE                                                 \ stack: <empty>
-  R> 1+ RECORDGAP * R@ + DUP DUP                       \ stack: addr addr addr
+  R> 1+ RECORDGAP * R> + DUP DUP                       \ stack: addr addr addr
   INSERT-EMPTY-ROW                                     \ stack: addr
   INTRAGAP + DUP                                       \ stack: addr' addr'
   INSERT-EMPTY-ROW                                     \ stack: <empty>
-  \ if we needed a new store free the old one
-  R@ ROW-RECORDS @
-  <>
-  IF
-    ROW-RECORDS @ FREE DROPERR
-    R> ROW-RECORDS !
-  ELSE
-    RDROP
-  THEN
   1 ROW-COUNT +!
 ;
+
 
 
 \ get the data at a given index
@@ -306,6 +300,41 @@ THEN
   SWAP                                                              \ stack: *ptr len
   R@ !
   R> INTRASPACE + !
+;
+
+
+: SPLIT-LINES
+  ( y x -- )
+  >R                                                   \ stack: y                               R: x
+  DUP                                                  \ stack: y y
+  >R                                                   \ stack: y                               R: x y
+  1+ GET-ROW                                           \ stack: *ptr len
+  SWAP 2R@ DROP                                        \ stack: len *ptr x
+  DUP                                                  \ stack: len *ptr x x
+  3 PICK SWAP                                          \ stack: len *ptr x len x
+  -                                                    \ stack: len *ptr x len-r
+  DUP                                                  \ stack: len *ptr x len-r len-r
+  0<>                                                  \ stack: len *ptr x len-r bool
+  IF
+    DUP                                                \ stack: len *ptr x len-r len-r
+    ZALLOCATE DROPERR                                  \ stack: len *ptr x len-r *dest
+    3 PICK                                             \ stack: len *ptr x len-r *dest *ptr
+    3 PICK                                             \ stack: len *ptr x len-r *dest *ptr x
+    +                                                  \ stack: len *ptr x len-r *dest *src
+    SWAP DUP >R                                        \ stack: len *ptr x len-r *src *dest     R: x y *dest
+    ROT DUP >R MOVE                                    \ stack: len *ptr x                      R: x y *dest len-r
+    2R> 2R>                                            \ stack: len *ptr x *dest len-r x y      R: <empty>
+    DUP >R                                             \ stack: len *ptr x *dest len-r x y      R: y
+    NIP                                                \ stacK: len *ptr x *dest len-r y
+    1+ RECORDGAP * ROW-RECORDS @ +                     \ stack: len *ptr x *dest len-r addr
+    2DUP !                                             \ stack: len *ptr x *dest len-r addr
+    CELL+                                              \ stack: len *ptr x *dest len-r addr'
+    NIP                                                \ stack: len *ptr x *dest addr'
+    !                                                  \ stack: len *ptr x
+    R> 2+ EDITOR-UPDATE-ROW                            \ stack: len *ptr x                      R: <empty>
+    \ just clean up for now
+    2DROP DROP
+  THEN
 ;
 
 
@@ -848,8 +877,12 @@ VARIABLE BUFFER_LEN
 
 : PROCESS-ENTER
   ( -- )
-  CY @ ROWOFF @ +
+  CY @ ROWOFF @ + DUP
+  \ add a blank line
   INSERT-ROW-ALLOC
+  \ fill the blank line
+  CX @ COLOFF @ +
+  SPLIT-LINES
   MARK-DIRTY
 ;
 
