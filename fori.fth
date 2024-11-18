@@ -304,7 +304,7 @@ THEN
 
 
 : SPLIT-LINES
-  ( y x -- )
+  ( y x -- ) 
   >R                                                   \ stack: y                               R: x
   DUP                                                  \ stack: y y
   >R                                                   \ stack: y                               R: x y
@@ -315,7 +315,7 @@ THEN
   -                                                    \ stack: len *ptr x len-r
   DUP                                                  \ stack: len *ptr x len-r len-r
   0<>                                                  \ stack: len *ptr x len-r bool
-  IF
+  IF 
     DUP                                                \ stack: len *ptr x len-r len-r
     ZALLOCATE DROPERR                                  \ stack: len *ptr x len-r *dest
     3 PICK                                             \ stack: len *ptr x len-r *dest *ptr
@@ -331,9 +331,24 @@ THEN
     CELL+                                              \ stack: len *ptr x *dest len-r addr'
     NIP                                                \ stack: len *ptr x *dest addr'
     !                                                  \ stack: len *ptr x
-    R> 2+ EDITOR-UPDATE-ROW                            \ stack: len *ptr x                      R: <empty>
-    \ just clean up for now
-    2DROP DROP
+    R@ 2+ EDITOR-UPDATE-ROW                            \ stack: len *ptr x
+    DUP >R                                             \ stack: len *ptr x                      R: y x
+    ROT                                                \ stack: *ptr x len
+    SWAP                                               \ stack: *ptr len x
+    DO                                                 \ stack: *ptr
+      I + DUP                                          \ stack: *ptr' *ptr'
+      0 SWAP                                           \ stack: *ptr' 0 *ptr'
+      C!                                               \ stack: *ptr'
+    LOOP 
+    DROP                                               \ stack: <empty>
+    2R>                                                \ stack: y x                             R: <empty>
+    SWAP                                               \ stack: x y
+    DUP >R                                             \ stack: x y                             R: y
+    RECORDGAP * ROW-RECORDS @ +                        \ stack: x addr
+    !                                                  \ stack: <empty> 
+    R> 1+ EDITOR-UPDATE-ROW                            \                                        R: <empty>
+  ELSE
+    2RDROP
   THEN
 ;
 
