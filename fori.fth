@@ -227,7 +227,7 @@ THEN
   IF
     0 >R                                                            \ how many expansions added
     0 DO
-      OVER                                                        \ stack: buff rbuff buff
+      OVER                                                          \ stack: buff rbuff buff
       I + C@                                                        \ stack: buff rbuff char
       DUP                                                           \ stack: buff rbuff char char
       TAB-CHAR =                                                    \ stack: buff rbuff char bool
@@ -296,7 +296,7 @@ THEN
   DROP FREE DROPERR                                                 \ stack: len *ptr index
   ROWOFF @ + 1-                                                     \ stack: len *ptr row
   RECORDGAP *                                                       \ stack: len *ptr offset
-  ROW-RECORDS @ + >R                                                 \ stack: len *ptr
+  ROW-RECORDS @ + >R                                                \ stack: len *ptr
   SWAP                                                              \ stack: *ptr len
   R@ !
   R> INTRASPACE + !
@@ -365,9 +365,9 @@ THEN
     2DROP 2DROP DROP                                                \ empty stack
   ELSE
     DUP 1+                                                          \ stack: index pos char *ptr len len+1
-    ALLOCATE DROPERR                                                \ stack: index pos char *ptr len *newptr
+    ZALLOCATE DROPERR                                               \ stack: index pos char *ptr len *newptr
     >R                                                              \ stack: index pos char *ptr len
-    OVER                                                          \ stack: index pos char *ptr len *ptr
+    OVER                                                            \ stack: index pos char *ptr len *ptr
     R@                                                              \ stack: index pos char *ptr len *ptr *newptr
     5 PICK                                                          \ stack: index pos char *ptr len *ptr *newptr pos
     MOVE                                                            \ stack: index pos char *ptr len
@@ -780,12 +780,12 @@ VARIABLE BUFFER_LEN
   >R R@ CELL+ >R                                          \ r-stack base-addr target-addr
   ROW-COUNT @ 0 DO
     I RECORDGAP *
-    ROW-RECORDS @ + INTRASPACE + @                         \ stack: addr1
-    R@                                                     \ stack: addr1 addr2
+    ROW-RECORDS @ + INTRASPACE + @                        \ stack: addr1
+    R@                                                    \ stack: addr1 addr2
     I RECORDGAP *
-    ROW-RECORDS @ + @ DUP                                  \ stack: addr1 addr2 u u
+    ROW-RECORDS @ + @ DUP                                 \ stack: addr1 addr2 u u
     \ update r-stack
-    R> + >R                                                \ stack: addr1 addr2 u
+    R> + >R                                               \ stack: addr1 addr2 u
     MOVE
     [ decimal 10 ] literal R@ C!
     R> 1+ >R
@@ -875,7 +875,13 @@ VARIABLE BUFFER_LEN
   DUP                                                     \ stack: index size len *ptr newsize newsize
   5 PICK 1-                                               \ stack: index size len *ptr newsize newsize index-
   INSERT-NEW-SIZE                                         \ stack: index size len *ptr newsize
-  RESIZE DROPERR                                          \ stack: index size len *newptr
+  OVER 0<>                                                \ stack: index size len *ptr newsize bool
+  IF
+    RESIZE DROPERR                                        \ stack: index size len *newptr
+  ELSE
+    NIP                                                   \ stack: index size len newsize
+    ZALLOCATE DROPERR                                      \ stack: index size len *newptr
+  THEN
   DUP                                                     \ stack: index size len *newptr *newptr
   4 PICK  1-                                              \ stack: index size len *newptr *newptr index-
   INSERT-NEW-STR                                          \ stack: index size len *newptr
