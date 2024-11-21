@@ -203,10 +203,10 @@ THEN
   GET-ROW                                                           \ get the *ptr len
   DUP 0<>                                                           \ stack: *ptr len bool
   IF
-    0                                                               \ stack now *ptr len 0
+    0                                                               \ stack: *ptr len 0
     DO
-      DUP                                                           \ stack now *ptr *ptr
-      I + C@                                                        \ stack now *ptr char
+      DUP                                                           \ stack: *ptr *ptr
+      I + C@                                                        \ stack: *ptr char
       TAB-CHAR =                                                    \ test for \t
       IF
         R> 1+ >R
@@ -238,10 +238,10 @@ THEN
           [ decimal 32 ] literal                                    \ stack: buff rbuff char exp spc
           3 PICK J + R@ + I + C!                                    \ stack: buff rbuff char exp
         LOOP
-        R> + 1- >R
-        DROP
+        R> + 1- >R                                                  \ stack: buff rbuff char
+        DROP                                                        \ stack: buff rbuff
       ELSE                                                          \ stack: buff rbuff char
-        OVER R@ + I + C!
+        OVER R@ + I + C!                                            \ stack: buff rbuff
       THEN
     LOOP
     RDROP
@@ -284,9 +284,9 @@ THEN
   R@ GET-ROW-SIZE                                                   \ stack: rsize buff rbuff buff rbuff size
   TRANSFER-RBUFF                                                    \ stack: rsize buff rbuff
   R> 1- RECORDGAP * INTRAGAP + ROW-RECORDS @ +                      \ stack: rsize buff rbuff addr
-  3 PICK OVER !                                                   \ store length
-  OVER OVER INTRASPACE + !                                      \ store rbuff
-  2DROP 2DROP                                                       \ clear stack
+  3 PICK OVER !                                                     \ stack: rsize buff rbuff addr
+  INTRASPACE + !                                                    \ stack: rsize buff
+  2DROP                                                             \ clear stack
 ;
 
 : REPLACE-ROW
@@ -336,9 +336,9 @@ THEN
     ROT                                                \ stack: *ptr x len
     SWAP                                               \ stack: *ptr len x
     DO                                                 \ stack: *ptr
-      I + DUP                                          \ stack: *ptr' *ptr'
-      0 SWAP                                           \ stack: *ptr' 0 *ptr'
-      C!                                               \ stack: *ptr'
+      DUP I +                                          \ stack: *ptr *ptr'
+      0 SWAP                                           \ stack: *ptr 0 *ptr'
+      C!                                               \ stack: *ptr
     LOOP 
     DROP                                               \ stack: <empty>
     2R>                                                \ stack: y x                             R: <empty>
@@ -346,8 +346,9 @@ THEN
     DUP >R                                             \ stack: x y                             R: y
     RECORDGAP * ROW-RECORDS @ +                        \ stack: x addr
     !                                                  \ stack: <empty> 
-    R> 1+ EDITOR-UPDATE-ROW                            \                                        R: <empty>
+    R> 1+ EDITOR-UPDATE-ROW                            \                                      R: <empty>
   ELSE
+    2DROP 2DROP
     2RDROP
   THEN
 ;
@@ -810,6 +811,7 @@ VARIABLE BUFFER_LEN
   CY @ ROWOFF @ + 1+ 
   EDITOR-UPDATE-ROW
 ; 
+
 
 : EDITOR-FREE-ROW
   ( u -- )
