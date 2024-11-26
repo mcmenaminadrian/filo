@@ -31,8 +31,6 @@ S" Filo editor -- (c) Adrian McMenamin, 2024"
 ;
 
 
-
-
 \ free everything
 : CLEANROWS
 ( -- )
@@ -294,7 +292,7 @@ THEN
   SWAP                                                              \ stack: len *ptr index
   DUP GET-ROW                                                       \ stack: len *ptr index *optr len
   DROP FREE DROPERR                                                 \ stack: len *ptr index
-  ROWOFF @ + 1-                                                     \ stack: len *ptr row
+  1-                                                                \ stack: len *ptr index--
   RECORDGAP *                                                       \ stack: len *ptr offset
   ROW-RECORDS @ + >R                                                \ stack: len *ptr
   SWAP                                                              \ stack: *ptr len
@@ -353,10 +351,21 @@ THEN
   THEN
 ;
 
+: CHECK-ROW-INSERT
+  ( index pos char -- index pos char)
+  ROW-RECORDS @ 0=
+  IF
+    2 PICK 0 DO
+      ADD-ROW
+    LOOP
+  THEN
+;
+
 
 : EDITOR-ROW-INSERT-CHAR
   ( index pos char -- )                                             \ insert char in row index and point pos
-  2 PICK ROWOFF @ +                                                 \ stack: index pos char row
+  CHECK-ROW-INSERT                                                  \ if file is empty add some rows
+  2 PICK                                                            \ stack: index pos char index
   GET-ROW                                                           \ stack: index pos char *ptr len
   3 PICK DUP                                                        \ stack: index pos char *ptr len pos pos
   0< SWAP                                                           \ stack: index pos char *ptr len bool pos
@@ -387,32 +396,6 @@ THEN
     EDITOR-UPDATE-ROW
   THEN
 ;
-
-
-\
-\ Utility words
-\
-
-\ is character on stack CTRL Key for that letter
-: CTRL-KEY ( n c -- f )
-  [ HEX 1F ] LITERAL AND
-  =
-;
-
-
-: ISCNTRL ( c -- f)
-  DUP
-  32 <
-  IF
-    DROP TRUE
-  ELSE
-    126 >
-    IF
-      TRUE
-    ELSE
-      FALSE
-    THEN
-  THEN ;
 
 
 \
@@ -1057,7 +1040,8 @@ VARIABLE BUFFER_LEN
     CHAR 3 OF
       R@ CHECKTILDE
       IF
-        PROCESS-BACKSPACE 
+        PROCESS-BACKSPACE
+        -1 CX +!
       THEN
     ENDOF
     \ no default
