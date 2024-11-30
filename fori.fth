@@ -22,6 +22,7 @@ DECIMAL 8 CONSTANT TAB-EXPANSION
 DECIMAL 9 CONSTANT TAB-CHAR
 VARIABLE LINEBUFFER
 VARIABLE TEMP
+VARIABLE TEMPSTR
 VARIABLE SIZE-OF-ROWALLOC
 VARIABLE ROW-RECORDS
 VARIABLE ROW-COUNT
@@ -421,12 +422,6 @@ THEN
 THEN
 ;
 
-: EDITOR-READ-KEY
-  ( -- *scratchpad c )
-  KEYRAW
-;
-
-
 \
 \ append buffer
 \
@@ -669,6 +664,22 @@ VARIABLE BUFFER_LEN
   RIGHT-LEN
 ;
 
+: ADJUST-FOR-HEIGHT
+  ( -- )
+  ROW-COUNT @ >R
+  R@ 0=
+  IF
+    0 CY !
+  ELSE
+    CY @ ROWOFF @ +
+    R@
+    > IF
+      R@ CY !
+    THEN
+  THEN
+  RDROP
+;
+
 
 : MOVE_CURSOR
   ( -- )
@@ -780,6 +791,59 @@ VARIABLE BUFFER_LEN
 \
 \ input section	
 \
+
+: EDITOR-PROMPT
+  ( ptr u -- ptr' u' )
+  2>R                                                     \ stack: empty
+  [ DECIMAL 48 ] LITERAL ZALLOCATE                        \ stack: ptr ior
+  DROPERR TEMPSTR !                                          \ stack: empty
+  BEGIN
+    2R@ TEMPSTR @ CELL+ TEMPSTR @ @  S+ 2DUP 
+    DRAW-STATUS-MESSAGE
+    DROP FREE DROPERR
+    KEYRAW
+    CASE
+      DUP [ DECIMAL 127 ] LITERAL > OF
+        \ bad key - ignore
+        FALSE
+        SWAP
+      ENDOF
+      [ DECIMAL 27 ] LITERAL OF
+        \ escape - drop out
+        TEMPSTR @ FREE DROPERR
+        0 TEMPSTR !
+        TRUE
+        SWAP
+      ENDOF
+      [ DECIMAL 13 ] LITERAL OF
+        \ enter - finish
+        TRUE
+      ENDOF
+      DUP [ DECIMAL 32 ] LITERAL < OF
+        \ bad key - ignore
+        FALSE
+        SWAP
+      ENDOF
+      \ default add char
+      TEMPSTR @ DUP @
+      1+ RESIZE DROPERR
+      TEMPSTR !
+      TEMPSTR @ CELL+  TEMPSTR @ @ + C!
+      1 TEMPSTR @ +!
+      FALSE
+      SWAP
+    ENDCASE
+  UNTIL
+  2RDROP
+  TEMPSTR @ 0<>
+  IF
+    TEMPSTR @ CELL+
+    TEMPSTR @ @
+  ELSE
+    0 0
+  THEN
+;
+ 
 
 : SHORTEN-LINE
   ( -- )
@@ -961,7 +1025,8 @@ VARIABLE BUFFER_LEN
     ENDCASE
   THEN
   RDROP
-;  
+;
+
 
 : HANDLE-BRACKET-CASES
   ( *addr --   )
@@ -977,10 +1042,12 @@ VARIABLE BUFFER_LEN
     ENDOF
     CHAR A OF                             \ up arrow
       -1 CY +!
+      ADJUST-FOR-HEIGHT
       SNAP-TO-LENGTH
     ENDOF
     CHAR B OF                             \ arrow down
       1 CY +!
+      ADJUST-FOR-HEIGHT
       SNAP-TO-LENGTH
     ENDOF
     CHAR C OF                             \ arrow right
@@ -989,6 +1056,7 @@ VARIABLE BUFFER_LEN
     ENDOF
     CHAR D OF                             \ arrow left
       -1 CX +!
+
       ADJUST-FOR-LENGTH
     ENDOF
     CHAR 5 OF
@@ -1012,6 +1080,7 @@ VARIABLE BUFFER_LEN
           ROWOFF @ ROWS @ + ROWOFF !
         THEN
       THEN
+      ADJUST-FOR-HEIGHT
     ENDOF
     CHAR 1 OF
       R@ CHECKTILDE
@@ -1072,6 +1141,7 @@ VARIABLE BUFFER_LEN
   ROT                                         \ stack: index pos char
   EDITOR-ROW-INSERT-CHAR
   1 CX +!
+  ADJUST-FOR-HEIGHT
   ADJUST-FOR-LENGTH
   1 DIRTY !
   S" Unsaved changes                      " DRAW-STATUS-MESSAGE
@@ -1183,7 +1253,7 @@ VARIABLE BUFFER_LEN
 
 : EDITOR-PROCESS-KEYPRESS
   ( --  )
-  EDITOR-READ-KEY                                       \ stack: *ptr, char
+  KEYPAD                                                 \ stack: *ptr, char
   CASE
     CHAR Q [ HEX 1F ] LITERAL AND  OF
       2DROP
@@ -1196,23 +1266,19 @@ VARIABLE BUFFER_LEN
       SWAP
       PROCESS-ESCAPED-KEY
     ENDOF
-    [ decimal 127 ] literal OF                           \ TODO : Handle backspace
-      SWAP
+    [ decimal 127 ] literal OF
       DROP
       -1 CX +!
       PROCESS-BACKSPACE
     ENDOF
     CHAR L [ hex 1F ] literal and OF
-      SWAP
       DROP
     ENDOF
     CHAR S [ HEX 1F ] LITERAL AND OF
-      SWAP
       DROP
       EDITOR-SAVE
     ENDOF
     CHAR Z [ HEX 1F ] LITERAL AND OF
-      SWAP
       DROP
       DIRTY @ 0<>
       EDITFILE @ 0<>
@@ -1225,6 +1291,12 @@ VARIABLE BUFFER_LEN
         S"                                        " DRAW-STATUS-MESSAGE
         0 DIRTY !
       THEN
+    ENDOF
+    CHAR A [ HEX 1F ] LITERAL AND OF
+      DROP
+      S\"                       SAVE AS... : " EDITOR-PROMPT
+      DRAW-STATUS-MESSAGE
+      2000 MS
     ENDOF
     [ DECIMAL 13 ] LITERAL OF
       SWAP DROP
