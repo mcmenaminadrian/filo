@@ -810,14 +810,14 @@ VARIABLE BUFFER_LEN
       ENDOF
       [ DECIMAL 27 ] LITERAL OF
         \ escape - drop out
-        TEMPSTR @ FREE DROPERR
-        0 TEMPSTR !
+        0 TEMPSTR @ @ !
         TRUE
         SWAP
       ENDOF
       [ DECIMAL 13 ] LITERAL OF
         \ enter - finish
         TRUE
+        SWAP
       ENDOF
       DUP [ DECIMAL 32 ] LITERAL < OF
         \ bad key - ignore
@@ -825,21 +825,25 @@ VARIABLE BUFFER_LEN
         SWAP
       ENDOF
       \ default add char
+      DUP
       TEMPSTR @ DUP @
-      1+ RESIZE DROPERR
+      2+ RESIZE DROPERR
       TEMPSTR !
-      TEMPSTR @ CELL+  TEMPSTR @ @ + C!
+      TEMPSTR @ CELL+ TEMPSTR @ @ + >R
+      R@ C!
+      0 R> 1+ C!
       1 TEMPSTR @ +!
       FALSE
       SWAP
     ENDCASE
   UNTIL
   2RDROP
-  TEMPSTR @ 0<>
+  TEMPSTR @ @ 0<>
   IF
     TEMPSTR @ CELL+
     TEMPSTR @ @
   ELSE
+    TEMPSTR @ FREE DROPERR
     0 0
   THEN
 ;
@@ -1248,7 +1252,19 @@ VARIABLE BUFFER_LEN
   THEN
   500 MS
   S"                       " DRAW-STATUS-MESSAGE
-;   
+;
+
+: EDITOR-SAVE-AS
+  ( *ptr u --)
+  DUP
+  0<>
+  IF
+    SAVE-FILE-NAME
+    1 DIRTY !
+    EDITOR-SAVE
+  THEN
+  2DROP
+;
 
 
 : EDITOR-PROCESS-KEYPRESS
@@ -1271,7 +1287,7 @@ VARIABLE BUFFER_LEN
       -1 CX +!
       PROCESS-BACKSPACE
     ENDOF
-    CHAR L [ hex 1F ] literal and OF
+    CHAR L [ hex 1F ] literal AND OF
       DROP
     ENDOF
     CHAR S [ HEX 1F ] LITERAL AND OF
@@ -1294,9 +1310,9 @@ VARIABLE BUFFER_LEN
     ENDOF
     CHAR A [ HEX 1F ] LITERAL AND OF
       DROP
-      S\"                       SAVE AS... : " EDITOR-PROMPT
-      DRAW-STATUS-MESSAGE
-      2000 MS
+      S\"                       SAVE AS... : " 
+      EDITOR-PROMPT
+      EDITOR-SAVE-AS
     ENDOF
     [ DECIMAL 13 ] LITERAL OF
       SWAP DROP
