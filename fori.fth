@@ -810,7 +810,7 @@ VARIABLE BUFFER_LEN
       ENDOF
       [ DECIMAL 27 ] LITERAL OF
         \ escape - drop out
-        0 TEMPSTR @ @ !
+        0 TEMPSTR @ !
         TRUE
         SWAP
       ENDOF
@@ -825,16 +825,16 @@ VARIABLE BUFFER_LEN
         SWAP
       ENDOF
       \ default add char
-      DUP
-      TEMPSTR @ DUP @
-      2+ RESIZE DROPERR
-      TEMPSTR !
-      TEMPSTR @ CELL+ TEMPSTR @ @ + >R
-      R@ C!
-      0 R> 1+ C!
-      1 TEMPSTR @ +!
-      FALSE
-      SWAP
+      DUP                                                     \ stack: c c
+      TEMPSTR @ DUP @                                         \ stack: c c addr cnt
+      2+ RESIZE DROPERR                                       \ stack: c c addr'
+      TEMPSTR !                                               \ stack: c c
+      TEMPSTR @ CELL+ TEMPSTR @ @ + >R                        \ stack: c c
+      R@ C!                                                   \ stack: c
+      0 R> 1+ C!                                              \ stack: c
+      1 TEMPSTR @ +!                                          \ stack: c
+      FALSE                                                   \ stack: c bool
+      SWAP                                                    \ stack: bool c
     ENDCASE
   UNTIL
   2RDROP
@@ -958,6 +958,8 @@ VARIABLE BUFFER_LEN
   CX @ COLOFF @ +
   SPLIT-LINES
   MARK-DIRTY
+  1 CY +!
+  0 CX !
 ;
 
 : PROCESS-BACKSPACE
@@ -1262,8 +1264,11 @@ VARIABLE BUFFER_LEN
     SAVE-FILE-NAME
     1 DIRTY !
     EDITOR-SAVE
+  ELSE
+    S"                                               " DRAW-STATUS-MESSAGE
   THEN
-  2DROP
+  DROP
+  FREE DROPERR
 ;
 
 
