@@ -531,7 +531,7 @@ VARIABLE BUFFER_LEN
       IF  \ welcome message
         welcomemsg ABAPPEND
       ELSE \ tilde
-        S" ~" ABAPPEND
+        S\" \e[31m~\e[39m" ABAPPEND
       THEN
     ELSE
       R@ GET-RROW                             \ stack: *ptr len
