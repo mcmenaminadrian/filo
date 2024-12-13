@@ -666,18 +666,23 @@ VARIABLE BUFFER_LEN
 
 : ADJUST-FOR-HEIGHT
   ( -- )
-  ROW-COUNT @ >R
-  R@ 0=
+  ROW-COUNT @
+  0=
   IF
     0 CY !
   ELSE
-    CY @ ROWOFF @ +
-    R@
-    > IF
-      R@ 1- CY !
-    THEN
+    BEGIN
+      CY @ ROWOFF @ +
+      ROW-COUNT @  >=
+    WHILE
+      CY @ 0>
+      IF
+        -1 CY +!
+      ELSE
+        -1 ROWOFF +!
+      THEN
+    REPEAT
   THEN
-  RDROP
 ;
 
 
@@ -1008,7 +1013,8 @@ VARIABLE BUFFER_LEN
 
 
 : CHECKTILDE
-  ( *char -- bool)
+  ( *addr -- bool)
+  NOP
   3 + C@
   CHAR ~ =
 ;
@@ -1048,13 +1054,13 @@ VARIABLE BUFFER_LEN
     ENDOF
     CHAR A OF                             \ up arrow
       -1 CY +!
-      ADJUST-FOR-HEIGHT
       SNAP-TO-LENGTH
+      ADJUST-FOR-HEIGHT
     ENDOF
     CHAR B OF                             \ arrow down
       1 CY +!
-      ADJUST-FOR-HEIGHT
       SNAP-TO-LENGTH
+      ADJUST-FOR-HEIGHT
     ENDOF
     CHAR C OF                             \ arrow right
       1 CX +!
@@ -1067,13 +1073,18 @@ VARIABLE BUFFER_LEN
     ENDOF
     CHAR 5 OF
       R@ CHECKTILDE                       \ page up
-      IF 
-        ROWOFF @ ROWS @ - 0<
+      IF
+        ROWOFF @ 0=
         IF
-          0 ROWOFF !
+          0 CY !
         ELSE
-          ROWOFF @ ROWS @ - ROWOFF !
-        THEN 
+          ROWOFF @ ROWS @ - 0<
+          IF
+            0 ROWOFF !
+          ELSE
+            ROWOFF @ ROWS @ - ROWOFF !
+          THEN 
+        THEN
       THEN
     ENDOF
     CHAR 6 OF
@@ -1081,7 +1092,7 @@ VARIABLE BUFFER_LEN
       IF
         ROWOFF @ ROWS @ + ROW-COUNT @ >
         IF
-          ROW-COUNT @ CY @ - ROWOFF !
+          ROW-COUNT @ CY @ - 1- ROWOFF !
         ELSE
           ROWOFF @ ROWS @ + ROWOFF !
         THEN
@@ -1215,6 +1226,7 @@ VARIABLE BUFFER_LEN
   DROP
   LINEBUFFER @ FREE DROPERR
   R> CLOSE-FILE DROP
+  ADJUST-FOR-HEIGHT
 ;
 
 : EDITOR-SAVE
