@@ -674,7 +674,7 @@ VARIABLE BUFFER_LEN
     CY @ ROWOFF @ +
     R@
     > IF
-      R@ CY !
+      R@ 1- CY !
     THEN
   THEN
   RDROP
@@ -1059,10 +1059,10 @@ VARIABLE BUFFER_LEN
     CHAR C OF                             \ arrow right
       1 CX +!
       ADJUST-FOR-LENGTH
+      ADJUST-FOR-HEIGHT
     ENDOF
     CHAR D OF                             \ arrow left
       -1 CX +!
-
       ADJUST-FOR-LENGTH
     ENDOF
     CHAR 5 OF
@@ -1271,6 +1271,20 @@ VARIABLE BUFFER_LEN
   FREE DROPERR
 ;
 
+: RESTORE-EDITS
+  ( -- )
+  DIRTY @ 0<>
+  EDITFILE @ 0<>
+  AND
+  IF
+    CLEANROWS
+    EDITFILE @ CELL+
+    EDITFILE @ @
+    EDITOROPEN
+    S"                                        " DRAW-STATUS-MESSAGE
+    0 DIRTY !
+  THEN
+;
 
 : EDITOR-PROCESS-KEYPRESS
   ( --  )
@@ -1301,17 +1315,7 @@ VARIABLE BUFFER_LEN
     ENDOF
     CHAR Z [ HEX 1F ] LITERAL AND OF
       DROP
-      DIRTY @ 0<>
-      EDITFILE @ 0<>
-      AND
-      IF
-        CLEANROWS
-        EDITFILE @ CELL+
-        EDITFILE @ @
-        EDITOROPEN
-        S"                                        " DRAW-STATUS-MESSAGE
-        0 DIRTY !
-      THEN
+      RESTORE-EDITS
     ENDOF
     CHAR A [ HEX 1F ] LITERAL AND OF
       DROP
