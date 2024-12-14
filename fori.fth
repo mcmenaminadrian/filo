@@ -22,6 +22,7 @@ DECIMAL 8 CONSTANT TAB-EXPANSION
 DECIMAL 9 CONSTANT TAB-CHAR
 VARIABLE LINEBUFFER
 VARIABLE TEMP
+VARIABLE TEMPSTR
 VARIABLE SIZE-OF-ROWALLOC
 VARIABLE ROW-RECORDS
 VARIABLE ROW-COUNT
@@ -29,8 +30,6 @@ VARIABLE ROW-COUNT
 : welcomemsg
 S" Filo editor -- (c) Adrian McMenamin, 2024"
 ;
-
-
 
 
 \ free everything
@@ -203,10 +202,10 @@ THEN
   GET-ROW                                                           \ get the *ptr len
   DUP 0<>                                                           \ stack: *ptr len bool
   IF
-    0                                                               \ stack now *ptr len 0
+    0                                                               \ stack: *ptr len 0
     DO
-      DUP                                                           \ stack now *ptr *ptr
-      I + C@                                                        \ stack now *ptr char
+      DUP                                                           \ stack: *ptr *ptr
+      I + C@                                                        \ stack: *ptr char
       TAB-CHAR =                                                    \ test for \t
       IF
         R> 1+ >R
@@ -227,7 +226,7 @@ THEN
   IF
     0 >R                                                            \ how many expansions added
     0 DO
-      OVER                                                        \ stack: buff rbuff buff
+      OVER                                                          \ stack: buff rbuff buff
       I + C@                                                        \ stack: buff rbuff char
       DUP                                                           \ stack: buff rbuff char char
       TAB-CHAR =                                                    \ stack: buff rbuff char bool
@@ -238,10 +237,10 @@ THEN
           [ decimal 32 ] literal                                    \ stack: buff rbuff char exp spc
           3 PICK J + R@ + I + C!                                    \ stack: buff rbuff char exp
         LOOP
-        R> + 1- >R
-        DROP
+        R> + 1- >R                                                  \ stack: buff rbuff char
+        DROP                                                        \ stack: buff rbuff
       ELSE                                                          \ stack: buff rbuff char
-        OVER R@ + I + C!
+        OVER R@ + I + C!                                            \ stack: buff rbuff
       THEN
     LOOP
     RDROP
@@ -284,9 +283,9 @@ THEN
   R@ GET-ROW-SIZE                                                   \ stack: rsize buff rbuff buff rbuff size
   TRANSFER-RBUFF                                                    \ stack: rsize buff rbuff
   R> 1- RECORDGAP * INTRAGAP + ROW-RECORDS @ +                      \ stack: rsize buff rbuff addr
-  3 PICK OVER !                                                   \ store length
-  OVER OVER INTRASPACE + !                                      \ store rbuff
-  2DROP 2DROP                                                       \ clear stack
+  3 PICK OVER !                                                     \ stack: rsize buff rbuff addr
+  INTRASPACE + !                                                    \ stack: rsize buff
+  2DROP                                                             \ clear stack
 ;
 
 : REPLACE-ROW
@@ -294,9 +293,9 @@ THEN
   SWAP                                                              \ stack: len *ptr index
   DUP GET-ROW                                                       \ stack: len *ptr index *optr len
   DROP FREE DROPERR                                                 \ stack: len *ptr index
-  ROWOFF @ + 1-                                                     \ stack: len *ptr row
+  1-                                                                \ stack: len *ptr index--
   RECORDGAP *                                                       \ stack: len *ptr offset
-  ROW-RECORDS @ + >R                                                 \ stack: len *ptr
+  ROW-RECORDS @ + >R                                                \ stack: len *ptr
   SWAP                                                              \ stack: *ptr len
   R@ !
   R> INTRASPACE + !
@@ -304,7 +303,7 @@ THEN
 
 
 : SPLIT-LINES
-  ( y x -- )
+  ( y x -- ) 
   >R                                                   \ stack: y                               R: x
   DUP                                                  \ stack: y y
   >R                                                   \ stack: y                               R: x y
@@ -315,7 +314,7 @@ THEN
   -                                                    \ stack: len *ptr x len-r
   DUP                                                  \ stack: len *ptr x len-r len-r
   0<>                                                  \ stack: len *ptr x len-r bool
-  IF
+  IF 
     DUP                                                \ stack: len *ptr x len-r len-r
     ZALLOCATE DROPERR                                  \ stack: len *ptr x len-r *dest
     3 PICK                                             \ stack: len *ptr x len-r *dest *ptr
@@ -331,16 +330,43 @@ THEN
     CELL+                                              \ stack: len *ptr x *dest len-r addr'
     NIP                                                \ stack: len *ptr x *dest addr'
     !                                                  \ stack: len *ptr x
-    R> 2+ EDITOR-UPDATE-ROW                            \ stack: len *ptr x                      R: <empty>
-    \ just clean up for now
-    2DROP DROP
+    R@ 2+ EDITOR-UPDATE-ROW                            \ stack: len *ptr x
+    DUP >R                                             \ stack: len *ptr x                      R: y x
+    ROT                                                \ stack: *ptr x len
+    SWAP                                               \ stack: *ptr len x
+    DO                                                 \ stack: *ptr
+      DUP I +                                          \ stack: *ptr *ptr'
+      0 SWAP                                           \ stack: *ptr 0 *ptr'
+      C!                                               \ stack: *ptr
+    LOOP 
+    DROP                                               \ stack: <empty>
+    2R>                                                \ stack: y x                             R: <empty>
+    SWAP                                               \ stack: x y
+    DUP >R                                             \ stack: x y                             R: y
+    RECORDGAP * ROW-RECORDS @ +                        \ stack: x addr
+    !                                                  \ stack: <empty> 
+    R> 1+ EDITOR-UPDATE-ROW                            \                                      R: <empty>
+  ELSE
+    2DROP 2DROP
+    2RDROP
+  THEN
+;
+
+: CHECK-ROW-INSERT
+  ( index pos char -- index pos char)
+  ROW-RECORDS @ 0=
+  IF
+    2 PICK 0 DO
+      ADD-ROW
+    LOOP
   THEN
 ;
 
 
 : EDITOR-ROW-INSERT-CHAR
   ( index pos char -- )                                             \ insert char in row index and point pos
-  2 PICK ROWOFF @ +                                                 \ stack: index pos char row
+  CHECK-ROW-INSERT                                                  \ if file is empty add some rows
+  2 PICK                                                            \ stack: index pos char index
   GET-ROW                                                           \ stack: index pos char *ptr len
   3 PICK DUP                                                        \ stack: index pos char *ptr len pos pos
   0< SWAP                                                           \ stack: index pos char *ptr len bool pos
@@ -349,9 +375,9 @@ THEN
     2DROP 2DROP DROP                                                \ empty stack
   ELSE
     DUP 1+                                                          \ stack: index pos char *ptr len len+1
-    ALLOCATE DROPERR                                                \ stack: index pos char *ptr len *newptr
+    ZALLOCATE DROPERR                                               \ stack: index pos char *ptr len *newptr
     >R                                                              \ stack: index pos char *ptr len
-    OVER                                                          \ stack: index pos char *ptr len *ptr
+    OVER                                                            \ stack: index pos char *ptr len *ptr
     R@                                                              \ stack: index pos char *ptr len *ptr *newptr
     5 PICK                                                          \ stack: index pos char *ptr len *ptr *newptr pos
     MOVE                                                            \ stack: index pos char *ptr len
@@ -371,32 +397,6 @@ THEN
     EDITOR-UPDATE-ROW
   THEN
 ;
-
-
-\
-\ Utility words
-\
-
-\ is character on stack CTRL Key for that letter
-: CTRL-KEY ( n c -- f )
-  [ HEX 1F ] LITERAL AND
-  =
-;
-
-
-: ISCNTRL ( c -- f)
-  DUP
-  32 <
-  IF
-    DROP TRUE
-  ELSE
-    126 >
-    IF
-      TRUE
-    ELSE
-      FALSE
-    THEN
-  THEN ;
 
 
 \
@@ -421,12 +421,6 @@ THEN
     ABORT
 THEN
 ;
-
-: EDITOR-READ-KEY
-  ( -- *scratchpad c )
-  KEYRAW
-;
-
 
 \
 \ append buffer
@@ -537,7 +531,7 @@ VARIABLE BUFFER_LEN
       IF  \ welcome message
         welcomemsg ABAPPEND
       ELSE \ tilde
-        S" ~" ABAPPEND
+        S\" \e[31m~\e[39m" ABAPPEND
       THEN
     ELSE
       R@ GET-RROW                             \ stack: *ptr len
@@ -670,6 +664,27 @@ VARIABLE BUFFER_LEN
   RIGHT-LEN
 ;
 
+: ADJUST-FOR-HEIGHT
+  ( -- )
+  ROW-COUNT @
+  0=
+  IF
+    0 CY !
+  ELSE
+    BEGIN
+      CY @ ROWOFF @ +
+      ROW-COUNT @  >=
+    WHILE
+      CY @ 0>
+      IF
+        -1 CY +!
+      ELSE
+        -1 ROWOFF +!
+      THEN
+    REPEAT
+  THEN
+;
+
 
 : MOVE_CURSOR
   ( -- )
@@ -764,12 +779,12 @@ VARIABLE BUFFER_LEN
   >R R@ CELL+ >R                                          \ r-stack base-addr target-addr
   ROW-COUNT @ 0 DO
     I RECORDGAP *
-    ROW-RECORDS @ + INTRASPACE + @                         \ stack: addr1
-    R@                                                     \ stack: addr1 addr2
+    ROW-RECORDS @ + INTRASPACE + @                        \ stack: addr1
+    R@                                                    \ stack: addr1 addr2
     I RECORDGAP *
-    ROW-RECORDS @ + @ DUP                                  \ stack: addr1 addr2 u u
+    ROW-RECORDS @ + @ DUP                                 \ stack: addr1 addr2 u u
     \ update r-stack
-    R> + >R                                                \ stack: addr1 addr2 u
+    R> + >R                                               \ stack: addr1 addr2 u
     MOVE
     [ decimal 10 ] literal R@ C!
     R> 1+ >R
@@ -781,6 +796,63 @@ VARIABLE BUFFER_LEN
 \
 \ input section	
 \
+
+: EDITOR-PROMPT
+  ( ptr u -- ptr' u' )
+  2>R                                                     \ stack: empty
+  [ DECIMAL 48 ] LITERAL ZALLOCATE                        \ stack: ptr ior
+  DROPERR TEMPSTR !                                          \ stack: empty
+  BEGIN
+    2R@ TEMPSTR @ CELL+ TEMPSTR @ @  S+ 2DUP 
+    DRAW-STATUS-MESSAGE
+    DROP FREE DROPERR
+    KEYRAW
+    CASE
+      DUP [ DECIMAL 127 ] LITERAL > OF
+        \ bad key - ignore
+        FALSE
+        SWAP
+      ENDOF
+      [ DECIMAL 27 ] LITERAL OF
+        \ escape - drop out
+        0 TEMPSTR @ !
+        TRUE
+        SWAP
+      ENDOF
+      [ DECIMAL 13 ] LITERAL OF
+        \ enter - finish
+        TRUE
+        SWAP
+      ENDOF
+      DUP [ DECIMAL 32 ] LITERAL < OF
+        \ bad key - ignore
+        FALSE
+        SWAP
+      ENDOF
+      \ default add char
+      DUP                                                     \ stack: c c
+      TEMPSTR @ DUP @                                         \ stack: c c addr cnt
+      2+ RESIZE DROPERR                                       \ stack: c c addr'
+      TEMPSTR !                                               \ stack: c c
+      TEMPSTR @ CELL+ TEMPSTR @ @ + >R                        \ stack: c c
+      R@ C!                                                   \ stack: c
+      0 R> 1+ C!                                              \ stack: c
+      1 TEMPSTR @ +!                                          \ stack: c
+      FALSE                                                   \ stack: c bool
+      SWAP                                                    \ stack: bool c
+    ENDCASE
+  UNTIL
+  2RDROP
+  TEMPSTR @ @ 0<>
+  IF
+    TEMPSTR @ CELL+
+    TEMPSTR @ @
+  ELSE
+    TEMPSTR @ FREE DROPERR
+    0 0
+  THEN
+;
+ 
 
 : SHORTEN-LINE
   ( -- )
@@ -795,6 +867,7 @@ VARIABLE BUFFER_LEN
   CY @ ROWOFF @ + 1+ 
   EDITOR-UPDATE-ROW
 ; 
+
 
 : EDITOR-FREE-ROW
   ( u -- )
@@ -858,7 +931,13 @@ VARIABLE BUFFER_LEN
   DUP                                                     \ stack: index size len *ptr newsize newsize
   5 PICK 1-                                               \ stack: index size len *ptr newsize newsize index-
   INSERT-NEW-SIZE                                         \ stack: index size len *ptr newsize
-  RESIZE DROPERR                                          \ stack: index size len *newptr
+  OVER 0<>                                                \ stack: index size len *ptr newsize bool
+  IF
+    RESIZE DROPERR                                        \ stack: index size len *newptr
+  ELSE
+    NIP                                                   \ stack: index size len newsize
+    ZALLOCATE DROPERR                                      \ stack: index size len *newptr
+  THEN
   DUP                                                     \ stack: index size len *newptr *newptr
   4 PICK  1-                                              \ stack: index size len *newptr *newptr index-
   INSERT-NEW-STR                                          \ stack: index size len *newptr
@@ -884,6 +963,8 @@ VARIABLE BUFFER_LEN
   CX @ COLOFF @ +
   SPLIT-LINES
   MARK-DIRTY
+  1 CY +!
+  0 CX !
 ;
 
 : PROCESS-BACKSPACE
@@ -932,7 +1013,8 @@ VARIABLE BUFFER_LEN
 
 
 : CHECKTILDE
-  ( *char -- bool)
+  ( *addr -- bool)
+  NOP
   3 + C@
   CHAR ~ =
 ;
@@ -955,7 +1037,8 @@ VARIABLE BUFFER_LEN
     ENDCASE
   THEN
   RDROP
-;  
+;
+
 
 : HANDLE-BRACKET-CASES
   ( *addr --   )
@@ -972,14 +1055,17 @@ VARIABLE BUFFER_LEN
     CHAR A OF                             \ up arrow
       -1 CY +!
       SNAP-TO-LENGTH
+      ADJUST-FOR-HEIGHT
     ENDOF
     CHAR B OF                             \ arrow down
       1 CY +!
       SNAP-TO-LENGTH
+      ADJUST-FOR-HEIGHT
     ENDOF
     CHAR C OF                             \ arrow right
       1 CX +!
       ADJUST-FOR-LENGTH
+      ADJUST-FOR-HEIGHT
     ENDOF
     CHAR D OF                             \ arrow left
       -1 CX +!
@@ -987,13 +1073,18 @@ VARIABLE BUFFER_LEN
     ENDOF
     CHAR 5 OF
       R@ CHECKTILDE                       \ page up
-      IF 
-        ROWOFF @ ROWS @ - 0<
+      IF
+        ROWOFF @ 0=
         IF
-          0 ROWOFF !
+          0 CY !
         ELSE
-          ROWOFF @ ROWS @ - ROWOFF !
-        THEN 
+          ROWOFF @ ROWS @ - 0<
+          IF
+            0 ROWOFF !
+          ELSE
+            ROWOFF @ ROWS @ - ROWOFF !
+          THEN 
+        THEN
       THEN
     ENDOF
     CHAR 6 OF
@@ -1001,11 +1092,12 @@ VARIABLE BUFFER_LEN
       IF
         ROWOFF @ ROWS @ + ROW-COUNT @ >
         IF
-          ROW-COUNT @ CY @ - ROWOFF !
+          ROW-COUNT @ CY @ - 1- ROWOFF !
         ELSE
           ROWOFF @ ROWS @ + ROWOFF !
         THEN
       THEN
+      ADJUST-FOR-HEIGHT
     ENDOF
     CHAR 1 OF
       R@ CHECKTILDE
@@ -1034,7 +1126,8 @@ VARIABLE BUFFER_LEN
     CHAR 3 OF
       R@ CHECKTILDE
       IF
-        PROCESS-BACKSPACE 
+        PROCESS-BACKSPACE
+        -1 CX +!
       THEN
     ENDOF
     \ no default
@@ -1065,6 +1158,7 @@ VARIABLE BUFFER_LEN
   ROT                                         \ stack: index pos char
   EDITOR-ROW-INSERT-CHAR
   1 CX +!
+  ADJUST-FOR-HEIGHT
   ADJUST-FOR-LENGTH
   1 DIRTY !
   S" Unsaved changes                      " DRAW-STATUS-MESSAGE
@@ -1132,6 +1226,7 @@ VARIABLE BUFFER_LEN
   DROP
   LINEBUFFER @ FREE DROPERR
   R> CLOSE-FILE DROP
+  ADJUST-FOR-HEIGHT
 ;
 
 : EDITOR-SAVE
@@ -1171,12 +1266,41 @@ VARIABLE BUFFER_LEN
   THEN
   500 MS
   S"                       " DRAW-STATUS-MESSAGE
-;   
+;
 
+: EDITOR-SAVE-AS
+  ( *ptr u --)
+  DUP
+  0<>
+  IF
+    SAVE-FILE-NAME
+    1 DIRTY !
+    EDITOR-SAVE
+  ELSE
+    S"                                               " DRAW-STATUS-MESSAGE
+  THEN
+  DROP
+  FREE DROPERR
+;
+
+: RESTORE-EDITS
+  ( -- )
+  DIRTY @ 0<>
+  EDITFILE @ 0<>
+  AND
+  IF
+    CLEANROWS
+    EDITFILE @ CELL+
+    EDITFILE @ @
+    EDITOROPEN
+    S"                                        " DRAW-STATUS-MESSAGE
+    0 DIRTY !
+  THEN
+;
 
 : EDITOR-PROCESS-KEYPRESS
   ( --  )
-  EDITOR-READ-KEY                                       \ stack: *ptr, char
+  KEYPAD                                                 \ stack: *ptr, char
   CASE
     CHAR Q [ HEX 1F ] LITERAL AND  OF
       2DROP
@@ -1189,35 +1313,27 @@ VARIABLE BUFFER_LEN
       SWAP
       PROCESS-ESCAPED-KEY
     ENDOF
-    [ decimal 127 ] literal OF                           \ TODO : Handle backspace
-      SWAP
+    [ decimal 127 ] literal OF
       DROP
       -1 CX +!
       PROCESS-BACKSPACE
     ENDOF
-    CHAR L [ hex 1F ] literal and OF
-      SWAP
+    CHAR L [ hex 1F ] literal AND OF
       DROP
     ENDOF
     CHAR S [ HEX 1F ] LITERAL AND OF
-      SWAP
       DROP
       EDITOR-SAVE
     ENDOF
     CHAR Z [ HEX 1F ] LITERAL AND OF
-      SWAP
       DROP
-      DIRTY @ 0<>
-      EDITFILE @ 0<>
-      AND
-      IF
-        CLEANROWS
-        EDITFILE @ CELL+
-        EDITFILE @ @
-        EDITOROPEN
-        S"                                        " DRAW-STATUS-MESSAGE
-        0 DIRTY !
-      THEN
+      RESTORE-EDITS
+    ENDOF
+    CHAR A [ HEX 1F ] LITERAL AND OF
+      DROP
+      S\"                       SAVE AS... : " 
+      EDITOR-PROMPT
+      EDITOR-SAVE-AS
     ENDOF
     [ DECIMAL 13 ] LITERAL OF
       SWAP DROP
