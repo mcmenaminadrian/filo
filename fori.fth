@@ -116,7 +116,7 @@ THEN
     ROW-COUNT @ 1+ RECORDGAP *
     SIZE-OF-ROWALLOC @ >
     IF
-      SIZE-OF-ROWALLOC @ 4096 + ZALLOCATE DROPERR >R
+      SIZE-OF-ROWALLOC @ [ DECIMAL 4096 ] LITERAL  + ZALLOCATE DROPERR >R
       ROW-RECORDS @ R@ SIZE-OF-ROWALLOC @ MOVE
       ROW-RECORDS @ FREE DROPERR
       R> ROW-RECORDS !
@@ -141,7 +141,7 @@ THEN
   SIZE-OF-ROWALLOC @ >
   \ create or identify dest
   IF
-    SIZE-OF-ROWALLOC @ 4096 + ZALLOCATE DROPERR >R
+    SIZE-OF-ROWALLOC @ [ DECIMAL 4096 ] LITERAL + ZALLOCATE DROPERR >R
     \ copy everything over
     ROW-RECORDS @ R@ SIZE-OF-ROWALLOC @ MOVE
     4096 SIZE-OF-ROWALLOC +!
@@ -234,7 +234,7 @@ THEN
         R@ I + TAB-EXPANSION MOD                                    \ how close to tab stop?
         TAB-EXPANSION SWAP -  DUP                                   \ stack: buff rbuff char exp exp
         0 DO                                                        \ stack: buff rbuff char exp
-          [ decimal 32 ] literal                                    \ stack: buff rbuff char exp spc
+          RECORDGAP                                                 \ stack: buff rbuff char exp spc
           3 PICK J + R@ + I + C!                                    \ stack: buff rbuff char exp
         LOOP
         R> + 1- >R                                                  \ stack: buff rbuff char
@@ -722,7 +722,7 @@ VARIABLE BUFFER_LEN
 : DRAW-STATUS-MESSAGE
   ( c-addr u -- )
   EDITORSCROLL
-  [ decimal 64 ] literal  ZALLOCATE DROPERR BUFFER_PTR !
+  [ decimal 256 ] literal  ZALLOCATE DROPERR BUFFER_PTR !
   0 BUFFER_LEN !
   \ make cursor disappear
   S\" \e[?25l" ABAPPEND
@@ -743,7 +743,7 @@ VARIABLE BUFFER_LEN
 : EDITOR-REFRESH-SCREEN
   ( -- )
   EDITORSCROLL
-  [ decimal 64 ] literal  ZALLOCATE DROPERR BUFFER_PTR !
+  [ decimal 256 ] literal  ZALLOCATE DROPERR BUFFER_PTR !
   0 BUFFER_LEN !
   \ make cursor disappear
   S\" \e[?25l" ABAPPEND
@@ -799,9 +799,9 @@ VARIABLE BUFFER_LEN
 
 : EDITOR-PROMPT
   ( ptr u -- ptr' u' )
-  2>R                                                     \ stack: empty
-  [ DECIMAL 48 ] LITERAL ZALLOCATE                        \ stack: ptr ior
-  DROPERR TEMPSTR !                                          \ stack: empty
+  2>R                                                         \ stack: empty
+  [ DECIMAL 48 ] LITERAL ZALLOCATE                            \ stack: ptr ior
+  DROPERR TEMPSTR !                                           \ stack: empty
   BEGIN
     2R@ TEMPSTR @ CELL+ TEMPSTR @ @  S+ 2DUP 
     DRAW-STATUS-MESSAGE
